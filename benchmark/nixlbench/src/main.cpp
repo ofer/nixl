@@ -179,7 +179,8 @@ createWorker() {
 int main(int argc, char *argv[]) {
     int ret = xferBenchConfig::parseConfig(argc, argv);
     if (0 != ret) {
-        return EXIT_FAILURE;
+        return xferBenchConfig::parsedCommand().path == nixlbench::CommandPath::Help ? EXIT_SUCCESS
+                                                                                     : EXIT_FAILURE;
     }
 
     int num_threads = xferBenchConfig::num_threads;
