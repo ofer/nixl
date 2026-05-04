@@ -98,8 +98,9 @@ generateGusliConfigFile(const std::vector<GusliDeviceConfig> &devices) {
     return config.str();
 }
 
-xferBenchNixlWorker::xferBenchNixlWorker(xferBenchConfig &config, const std::vector<std::string> &devices)
-    : xferBenchWorker(config) {
+xferBenchNixlWorker::xferBenchNixlWorker(const nixlbench::benchmarkConfig &benchmark_config,
+                                         std::vector<std::string> &devices)
+    : xferBenchWorker(benchmark_config) {
     seg_type = GET_SEG_TYPE(isInitiator());
 
     int rank;
