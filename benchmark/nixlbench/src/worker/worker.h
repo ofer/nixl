@@ -30,10 +30,11 @@ class xferBenchWorker {
     protected:
         std::string name;
         xferBenchRT *rt;
+        xferBenchConfig &config;
         static std::atomic<int> terminate;
 
     public:
-        xferBenchWorker();
+        xferBenchWorker(xferBenchConfig &config);
         virtual ~xferBenchWorker();
 
         std::string getName() const;
