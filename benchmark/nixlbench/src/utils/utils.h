@@ -18,6 +18,7 @@
 #ifndef NIXL_BENCHMARK_NIXLBENCH_SRC_UTILS_UTILS_H
 #define NIXL_BENCHMARK_NIXLBENCH_SRC_UTILS_UTILS_H
 
+#include "benchmark_config.h"
 #include "config.h"
 #include <chrono>
 #include <cstdint>
@@ -376,6 +377,14 @@ public:
                      std::vector<std::vector<xferBenchIOV>> &remote_lists);
     static void
     printStatsHeader(const xferBenchConfig &config);
+
+    static void
+    printStats(const nixlbench::benchmarkConfig &config,
+               bool is_target,
+               size_t block_size,
+               size_t batch_size,
+               xferBenchStats stats);
+
     static void
     printStats(const xferBenchConfig &config,
                bool is_target,
