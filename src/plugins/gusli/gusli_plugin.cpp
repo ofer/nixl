@@ -27,8 +27,16 @@ get_gusli_backend_options() {
     params["client_name"] = "";
     params["max_num_simultaneous_requests"] = "256";
     params["config_file"] = "";
+    params["device_byte_offsets"] = "";
+    params["device_security"] = "";
     return params;
 }
+ 
+nixlBackendPluginCapabilities
+buildGusliCapabilities() {
+    return { false};
+}
+
 
 #ifdef STATIC_PLUGIN_GUSLI
 nixlBackendPlugin *
@@ -37,7 +45,8 @@ createStaticGusliPlugin() {
                                   "GUSLI",
                                   "0.1.0",
                                   get_gusli_backend_options(),
-                                  {BLK_SEG, DRAM_SEG});
+                                  {BLK_SEG, DRAM_SEG},
+                                  buildGusliCapabilities());
 }
 #else
 extern "C" NIXL_PLUGIN_EXPORT nixlBackendPlugin *
@@ -46,9 +55,11 @@ nixl_plugin_init() {
                                   "GUSLI",
                                   "0.1.0",
                                   get_gusli_backend_options(),
-                                  {BLK_SEG, DRAM_SEG});
+                                  {BLK_SEG, DRAM_SEG},
+                                  buildGusliCapabilities());
 }
 
 extern "C" NIXL_PLUGIN_EXPORT void
 nixl_plugin_fini() {}
 #endif
+ 

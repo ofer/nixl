@@ -111,6 +111,9 @@ etcd_dep = dependency('etcd-cpp-api', required : false)
 # GFlags
 gflags_dep = dependency('gflags', required: true)
 
+# CLI11
+cli11_dep = dependency('CLI11', required: true, fallback: ['cli11', 'cli11_dep'])
+
 # ASIO (usually via libasio-dev package)
 asio_dep = dependency('asio', required: true)
 
@@ -156,7 +159,9 @@ endif
 # Subprojects
 subdir('src/utils')
 subdir('src/runtime')
+subdir('src/benchmark')
 subdir('src/worker')
+subdir('tests')
 
 # Configure header file
 configure_file(
@@ -171,7 +176,7 @@ configure_file(
     install_dir: get_option('includedir') / 'nixlbench'
 )
 
-deps = [nixl_lib, nixl_build, nixl_serdes, openmp_dep, gflags_dep, tomlplusplus_dep, asio_dep]
+deps = [nixl_lib, nixl_build, nixl_serdes, openmp_dep, gflags_dep, cli11_dep, tomlplusplus_dep, asio_dep]
 args = []
 if etcd_available
     deps += [etcd_dep]
@@ -216,7 +221,7 @@ if nvshmem_available
     nvcc_args += ['-lnixl', '-lnixl_build', '-lserdes', '-lcuda', '-lcudart', '-lnvshmem']
     nvcc_args += args
     nvcc_cmd_files = [
-                 meson.current_build_dir() + '/src/utils/libutils.a.p/utils.cpp.o',
+                  meson.current_build_dir() + '/src/utils/libutils.a.p/utils.cpp.o',
                  meson.current_build_dir() + '/src/runtime/libruntime.a.p/runtime.cpp.o',
                  meson.current_build_dir() + '/src/worker/libworker.a.p/worker.cpp.o',
                  meson.current_build_dir() + '/src/worker/nixl/libnixl_worker.a.p/nixl_worker.cpp.o',
@@ -233,7 +238,7 @@ if nvshmem_available
     nvcc_command += nvcc_cmd_files
 
     custom_target('nixlbench',
-        input: 'src/main.cpp',
+        input: ['src/main.cpp', 'src/benchmark_runner.cpp'],
         output: 'nixlbench',
         command: nvcc_command,
         build_by_default: true,
@@ -241,9 +246,9 @@ if nvshmem_available
         install_dir: get_option('bindir'),
         depends: [nixlbench_runtimes, utils_lib, worker_libs])
 else
-    executable('nixlbench', 'src/main.cpp',
+    executable('nixlbench', ['src/main.cpp', 'src/benchmark_runner.cpp'],
                 include_directories: inc_dir,
-                link_with: [nixlbench_runtimes, utils_lib, worker_libs],
+                link_with: [nixlbench_runtimes, utils_lib, benchmark_framework_lib, worker_libs],
                 dependencies: deps,
                 link_args: args,
                 install: true,

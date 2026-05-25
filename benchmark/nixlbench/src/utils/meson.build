@@ -14,6 +14,29 @@
 # limitations under the License.
 
 utils_sources = [
+  '../benchmark_config.cpp',
+  '../benchmark_config.h',
+  '../benchmark_runner_config.cpp',
+  '../benchmark_runner_config.h',
+  'cli/benchmark_cli_builder.cpp',
+  'cli/benchmark_cli_builder.h',
+  'cli/benchmark_command.h',
+  'cli/benchmark_requests.h',
+  'cli/cli_option.cpp',
+  'cli/cli_option.h',
+  'cli/metadata_plugin_command.cpp',
+  'cli/metadata_plugin_command.h',
+  'cli/plugin_registry.cpp',
+  'cli/plugin_registry.h',
+  'cli/g3_scenario_command.cpp',
+  'cli/g3_scenario_command.h',
+  'cli/g4_scenario_command.cpp',
+  'cli/g4_scenario_command.h',
+  'cli/raw_command.cpp',
+  'cli/raw_command.h',
+  'cli/raw_execution.cpp',
+  'cli/raw_execution.h',
+  'cli/raw_validation.cpp',
   'neuron.cpp',
   'neuron.h',
   'utils.cpp',
@@ -25,6 +48,7 @@ utils_deps = [
   cuda_dep,
   openmp_dep,
   gflags_dep,
+  cli11_dep,
   tomlplusplus_dep,
   dependency('dl', required: true)
 ]
@@ -39,4 +63,3 @@ utils_dep = declare_dependency(
   dependencies: utils_deps,
   include_directories: inc_dir
 )
-

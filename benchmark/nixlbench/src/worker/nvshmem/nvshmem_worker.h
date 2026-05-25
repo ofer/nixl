@@ -38,7 +38,7 @@ class xferBenchNvshmemWorker: public xferBenchWorker {
         int group_id_initialized = 0;
 
     public:
-        xferBenchNvshmemWorker();
+        xferBenchNvshmemWorker(const nixlbench::benchmarkConfig &benchmark_config);
         ~xferBenchNvshmemWorker() override;
 
         // Memory management

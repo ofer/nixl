@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#include "benchmark_config.h"
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -229,74 +230,100 @@ NB_ARG_STRING(gusli_device_security,
 #undef NB_ARG_BOOL
 #undef NB_ARG_STRING
 
-std::string xferBenchConfig::runtime_type = "";
-std::string xferBenchConfig::worker_type = "";
-std::string xferBenchConfig::backend = "";
-std::string xferBenchConfig::initiator_seg_type = "";
-std::string xferBenchConfig::target_seg_type = "";
-std::string xferBenchConfig::scheme = "";
-std::string xferBenchConfig::mode = "";
-std::string xferBenchConfig::op_type = "";
-bool xferBenchConfig::check_consistency = false;
-size_t xferBenchConfig::total_buffer_size = 0;
-bool xferBenchConfig::recreate_xfer = false;
-int xferBenchConfig::num_initiator_dev = 0;
-int xferBenchConfig::num_target_dev = 0;
-size_t xferBenchConfig::start_block_size = 0;
-size_t xferBenchConfig::max_block_size = 0;
-size_t xferBenchConfig::start_batch_size = 0;
-size_t xferBenchConfig::max_batch_size = 0;
-int xferBenchConfig::num_iter = 0;
-int xferBenchConfig::large_blk_iter_ftr = 16;
-int xferBenchConfig::warmup_iter = 0;
-int xferBenchConfig::num_threads = 0;
-bool xferBenchConfig::enable_pt = false;
-size_t xferBenchConfig::progress_threads = 0;
-bool xferBenchConfig::enable_vmm = false;
-std::string xferBenchConfig::device_list = "";
-std::string xferBenchConfig::etcd_endpoints = "";
-std::string xferBenchConfig::asio_address = "127.0.0.1";
-std::uint16_t xferBenchConfig::asio_port = 12345;
-std::string xferBenchConfig::benchmark_group = "default";
-int xferBenchConfig::gds_batch_pool_size = 0;
-int xferBenchConfig::gds_batch_limit = 0;
-int xferBenchConfig::gds_mt_num_threads = 0;
-std::string xferBenchConfig::gpunetio_device_list = "";
-std::string xferBenchConfig::gpunetio_oob_list = "";
-std::vector<std::string> devices = {};
-int xferBenchConfig::num_files = 0;
-std::string xferBenchConfig::posix_api_type = "";
-int xferBenchConfig::posix_ios_pool_size = 0;
-int xferBenchConfig::posix_kernel_queue_size = 0;
-std::string xferBenchConfig::filepath = "";
-std::string xferBenchConfig::filenames = "";
-bool xferBenchConfig::storage_enable_direct = false;
-long xferBenchConfig::page_size = sysconf(_SC_PAGESIZE);
-std::string xferBenchConfig::obj_access_key = "";
-std::string xferBenchConfig::obj_secret_key = "";
-std::string xferBenchConfig::obj_session_token = "";
-std::string xferBenchConfig::obj_bucket_name = "";
-std::string xferBenchConfig::obj_scheme = "";
-std::string xferBenchConfig::obj_region = "";
-bool xferBenchConfig::obj_use_virtual_addressing = false;
-std::string xferBenchConfig::obj_endpoint_override = "";
-std::string xferBenchConfig::obj_req_checksum = "";
-std::string xferBenchConfig::obj_ca_bundle = "";
-size_t xferBenchConfig::obj_crt_min_limit = 0;
-bool xferBenchConfig::obj_accelerated_enable = false;
-std::string xferBenchConfig::obj_accelerated_type = "";
-std::string xferBenchConfig::azure_blob_account_url = "";
-std::string xferBenchConfig::azure_blob_container_name = "";
-std::string xferBenchConfig::azure_blob_connection_string = "";
-int xferBenchConfig::hf3fs_iopool_size = 0;
-std::string xferBenchConfig::gusli_client_name = "";
-int xferBenchConfig::gusli_max_simultaneous_requests = 0;
-std::string xferBenchConfig::gusli_config_file = "";
-std::string xferBenchConfig::gusli_device_byte_offsets = "";
-std::string xferBenchConfig::gusli_device_security = "";
+namespace {
+template <typename T>
+T
+getTomlValue(const toml::table *tbl, const char *name, const T &fallback) {
+    if (tbl == nullptr) {
+        return fallback;
+    }
+    try {
+        return tbl->at_path(name).value<T>().value_or(fallback);
+    }
+    catch (const std::exception &) {
+        return fallback;
+    }
+}
+
+}
+
+xferBenchConfig::xferBenchConfig()
+    : runtime_type(XFERBENCH_RT_ETCD),
+      worker_type(XFERBENCH_WORKER_NIXL),
+      backend(XFERBENCH_BACKEND_UCX),
+      initiator_seg_type(XFERBENCH_SEG_TYPE_DRAM),
+      target_seg_type(XFERBENCH_SEG_TYPE_DRAM),
+      scheme(XFERBENCH_SCHEME_PAIRWISE),
+      mode(XFERBENCH_MODE_SG),
+      op_type(XFERBENCH_OP_WRITE),
+      check_consistency(false),
+      total_buffer_size(8ULL * 1024ULL * 1024ULL * 1024ULL),
+      recreate_xfer(false),
+      num_initiator_dev(1),
+      num_target_dev(1),
+      start_block_size(4ULL * 1024ULL),
+      max_block_size(64ULL * 1024ULL * 1024ULL),
+      start_batch_size(1),
+      max_batch_size(1),
+      num_iter(1000),
+      large_blk_iter_ftr(16),
+      warmup_iter(100),
+      num_threads(1),
+      enable_pt(false),
+      progress_threads(0),
+      device_list("all"),
+      etcd_endpoints(""),
+      benchmark_group("default"),
+      filepath(""),
+      filenames(""),
+      enable_vmm(false),
+      num_files(1),
+      posix_api_type(XFERBENCH_POSIX_API_AIO),
+      posix_ios_pool_size(65536),
+      posix_kernel_queue_size(256),
+      storage_enable_direct(false),
+      gds_batch_pool_size(32),
+      gds_batch_limit(128),
+      gds_mt_num_threads(1),
+      gpunetio_device_list("0"),
+      gpunetio_oob_list(""),
+      page_size(sysconf(_SC_PAGESIZE)),
+      obj_access_key(""),
+      obj_secret_key(""),
+      obj_session_token(""),
+      obj_bucket_name(XFERBENCH_OBJ_BUCKET_NAME_DEFAULT),
+      obj_scheme(XFERBENCH_OBJ_SCHEME_HTTP),
+      obj_region(XFERBENCH_OBJ_REGION_EU_CENTRAL_1),
+      obj_use_virtual_addressing(false),
+      obj_endpoint_override(""),
+      obj_req_checksum(XFERBENCH_OBJ_REQ_CHECKSUM_SUPPORTED),
+      obj_ca_bundle(""),
+      obj_crt_min_limit(0),
+      obj_accelerated_enable(false),
+      obj_accelerated_type(""),
+      azure_blob_account_url(""),
+      azure_blob_container_name(""),
+      azure_blob_connection_string(""),
+      hf3fs_iopool_size(64),
+      gusli_client_name("NIXLBench"),
+      gusli_max_simultaneous_requests(32),
+      gusli_config_file(""),
+      gusli_device_byte_offsets(""),
+      gusli_device_security(""),
+      cli_help_requested(false) {}
 
 int
 xferBenchConfig::parseConfig(int argc, char *argv[]) {
+    cli_help_requested = false;
+
+    if (argc > 1) {
+        std::string_view first_arg(argv[1]);
+        if (first_arg == "scenario" || first_arg == "raw" || first_arg == "--help" || first_arg == "-h") {
+            std::cerr << "CLI11 subcommands must be executed through BenchmarkCliBuilder" << std::endl;
+            return -1;
+        }
+    }
+
     std::string usage("NIXL Benchmark.  Sample usage:\n\n");
     usage += std::string(argv[0]) + " [flags]";
     gflags::SetUsageMessage(usage);
@@ -320,6 +347,11 @@ xferBenchConfig::parseConfig(int argc, char *argv[]) {
     return loadParams();
 }
 
+bool
+xferBenchConfig::cliHelpRequested() const {
+    return cli_help_requested;
+}
+
 int
 xferBenchConfig::loadParams(void) {
     std::unique_ptr<toml::table> tbl;
@@ -339,16 +371,11 @@ xferBenchConfig::loadParams(void) {
     // parameters over those specified in the config_file or set as defaults.
 #define NB_ARG(name)                                                                        \
     ({                                                                                      \
-        auto retval = FLAGS_##name;                                                         \
-        if (tbl != nullptr && gflags::GetCommandLineFlagInfoOrDie(#name).is_default) {      \
-            /* config_file exists and the parameter is not specified explicitly -> */       \
-            /*/ try to read the value from config_file first */                             \
-            try {                                                                           \
-                retval = tbl->at_path(#name).value<decltype(name)>().value();               \
-            }                                                                               \
-            catch (const std::exception &) {                                                \
-                /* the parameter is not in the config_file -> fall back to default value */ \
-            }                                                                               \
+        auto retval = name;                                                                 \
+        retval = FLAGS_##name;                                                             \
+        if (tbl != nullptr &&                                                               \
+            gflags::GetCommandLineFlagInfoOrDie(#name).is_default) {                        \
+            retval = getTomlValue(tbl.get(), #name, retval);                                \
         }                                                                                   \
         retval;                                                                             \
     })
@@ -584,17 +611,17 @@ xferBenchConfig::loadParams(void) {
 }
 
 void
-xferBenchConfig::printOption(const std::string &desc, const std::string &value) {
+xferBenchConfig::printOption(const std::string &desc, const std::string &value) const {
     std::cout << std::left << std::setw(60) << desc << ": " << value << std::endl;
 }
 
 void
-xferBenchConfig::printSeparator(const char sep) {
+xferBenchConfig::printSeparator(const char sep) const {
     std::cout << std::string(160, sep) << std::endl;
 }
 
 void
-xferBenchConfig::printConfig() {
+xferBenchConfig::printConfig() const {
     printSeparator('*');
     std::cout << "NIXLBench Configuration" << std::endl;
     printSeparator('*');
@@ -677,7 +704,7 @@ xferBenchConfig::printConfig() {
                         azure_blob_connection_string);
         }
 
-        if (xferBenchConfig::isStorageBackend()) {
+        if (isStorageBackend()) {
             printOption("filepath (--filepath=path)", filepath);
             printOption("filenames (--filenames=filename1,filename2,...)", filenames);
             printOption("Number of files (--num_files=N)", std::to_string(num_files));
@@ -716,21 +743,20 @@ xferBenchConfig::printConfig() {
 }
 
 std::vector<std::string>
-xferBenchConfig::parseDeviceList() {
+xferBenchConfig::parseDeviceList() const {
     std::vector<std::string> devices;
     std::string dev;
-    std::stringstream ss(xferBenchConfig::device_list);
+    std::stringstream ss(device_list);
 
     // TODO: Add support for other schemes
-    if (xferBenchConfig::scheme == XFERBENCH_SCHEME_PAIRWISE &&
-        xferBenchConfig::device_list != "all") {
+    if (scheme == XFERBENCH_SCHEME_PAIRWISE && device_list != "all") {
         while (std::getline(ss, dev, ',')) {
             devices.push_back(dev);
         }
 
-        if ((int)devices.size() != xferBenchConfig::num_initiator_dev ||
-            (int)devices.size() != xferBenchConfig::num_target_dev) {
-            std::cerr << "Incorrect device list " << xferBenchConfig::device_list
+        if ((int)devices.size() != num_initiator_dev ||
+            (int)devices.size() != num_target_dev) {
+            std::cerr << "Incorrect device list " << device_list
                       << " provided for pairwise scheme " << devices.size() << "# devices"
                       << std::endl;
             return {};
@@ -743,20 +769,16 @@ xferBenchConfig::parseDeviceList() {
 }
 
 bool
-xferBenchConfig::isStorageBackend() {
-    return (XFERBENCH_BACKEND_GDS == xferBenchConfig::backend ||
-            XFERBENCH_BACKEND_GDS_MT == xferBenchConfig::backend ||
-            XFERBENCH_BACKEND_HF3FS == xferBenchConfig::backend ||
-            XFERBENCH_BACKEND_POSIX == xferBenchConfig::backend ||
-            XFERBENCH_BACKEND_OBJ == xferBenchConfig::backend ||
-            XFERBENCH_BACKEND_GUSLI == xferBenchConfig::backend ||
-            XFERBENCH_BACKEND_AZURE_BLOB == xferBenchConfig::backend);
+xferBenchConfig::isStorageBackend() const {
+    return (XFERBENCH_BACKEND_GDS == backend || XFERBENCH_BACKEND_GDS_MT == backend ||
+            XFERBENCH_BACKEND_HF3FS == backend || XFERBENCH_BACKEND_POSIX == backend ||
+            XFERBENCH_BACKEND_OBJ == backend || XFERBENCH_BACKEND_GUSLI == backend ||
+            XFERBENCH_BACKEND_AZURE_BLOB == backend);
 }
 
 bool
-xferBenchConfig::isObjStorageBackend() {
-    return (XFERBENCH_BACKEND_OBJ == xferBenchConfig::backend ||
-            XFERBENCH_BACKEND_AZURE_BLOB == xferBenchConfig::backend);
+xferBenchConfig::isObjStorageBackend() const {
+    return (XFERBENCH_BACKEND_OBJ == backend || XFERBENCH_BACKEND_AZURE_BLOB == backend);
 };
 
 /**********
@@ -904,16 +926,15 @@ parseGusliDeviceList(const std::string &device_list,
 }
 
 bool
-xferBenchUtils::checkConsistency(std::vector<std::vector<xferBenchIOV>> &iov_lists) {
+xferBenchUtils::checkConsistency(const xferBenchConfig &config,
+                                 std::vector<std::vector<xferBenchIOV>> &iov_lists) {
     int i = 0, j = 0;
-    static bool gusli_devmap_init = false;
-    static std::vector<GusliDeviceConfig> gusli_devs;
-    if (!gusli_devmap_init && xferBenchConfig::backend == XFERBENCH_BACKEND_GUSLI) {
-        gusli_devs = parseGusliDeviceList(xferBenchConfig::device_list,
-                                          xferBenchConfig::gusli_device_security,
-                                          xferBenchConfig::gusli_device_byte_offsets,
-                                          xferBenchConfig::num_initiator_dev);
-        gusli_devmap_init = true;
+    std::vector<GusliDeviceConfig> gusli_devs;
+    if (config.backend == XFERBENCH_BACKEND_GUSLI) {
+        gusli_devs = parseGusliDeviceList(config.device_list,
+                                          config.gusli_device_security,
+                                          config.gusli_device_byte_offsets,
+                                          config.num_initiator_dev);
     }
     bool pass_check_consistency = true;
     for (const auto &iov_list : iov_lists) {
@@ -926,11 +947,11 @@ xferBenchUtils::checkConsistency(std::vector<std::vector<xferBenchIOV>> &iov_lis
 
             len = iov.len;
 
-            if (xferBenchConfig::isStorageBackend() ||
-                xferBenchConfig::backend == XFERBENCH_BACKEND_GPUNETIO) {
-                if (xferBenchConfig::op_type == XFERBENCH_OP_READ) {
-                    if (xferBenchConfig::initiator_seg_type == XFERBENCH_SEG_TYPE_VRAM) {
-                        if (posix_memalign(&addr, xferBenchConfig::page_size, len) != 0) {
+            if (config.isStorageBackend() ||
+                config.backend == XFERBENCH_BACKEND_GPUNETIO) {
+                if (config.op_type == XFERBENCH_OP_READ) {
+                    if (config.initiator_seg_type == XFERBENCH_SEG_TYPE_VRAM) {
+                        if (posix_memalign(&addr, config.page_size, len) != 0) {
                             std::cerr << "Failed to allocate aligned buffer of size: " << len
                                       << std::endl;
                             exit(EXIT_FAILURE);
@@ -940,15 +961,15 @@ xferBenchUtils::checkConsistency(std::vector<std::vector<xferBenchIOV>> &iov_lis
                     } else {
                         addr = (void *)iov.addr;
                     }
-                } else if (xferBenchConfig::op_type == XFERBENCH_OP_WRITE) {
-                    if (posix_memalign(&addr, xferBenchConfig::page_size, len) != 0) {
+                } else if (config.op_type == XFERBENCH_OP_WRITE) {
+                    if (posix_memalign(&addr, config.page_size, len) != 0) {
                         std::cerr << "Failed to allocate aligned buffer of size: " << len
                                   << std::endl;
                         exit(EXIT_FAILURE);
                     }
                     is_allocated = true;
-                    if (xferBenchConfig::isObjStorageBackend()) {
-                        if (!xferBenchUtils::getObj(iov.metaInfo)) {
+                    if (config.isObjStorageBackend()) {
+                        if (!xferBenchUtils::getObj(config, iov.metaInfo)) {
                             std::cerr << "Failed to get object: " << iov.metaInfo << std::endl;
                             exit(EXIT_FAILURE);
                         }
@@ -965,7 +986,7 @@ xferBenchUtils::checkConsistency(std::vector<std::vector<xferBenchIOV>> &iov_lis
                         }
                         close(fd);
                         unlink(iov.metaInfo.c_str());
-                    } else if (xferBenchConfig::backend == XFERBENCH_BACKEND_GUSLI) {
+                    } else if (config.backend == XFERBENCH_BACKEND_GUSLI) {
                         // Map device id -> path via device_list and read from the bdev at LBA
                         // offset
                         auto it = std::find_if(
@@ -983,7 +1004,7 @@ xferBenchUtils::checkConsistency(std::vector<std::vector<xferBenchIOV>> &iov_lis
                             exit(EXIT_FAILURE);
                         }
                         int oflags = O_RDONLY;
-                        if (xferBenchConfig::storage_enable_direct) oflags |= O_DIRECT;
+                        if (config.storage_enable_direct) oflags |= O_DIRECT;
                         int fd = open(it->device_path.c_str(), oflags);
                         if (fd < 0) {
                             std::cerr << "Failed to open GUSLI device path: " << it->device_path
@@ -1010,24 +1031,24 @@ xferBenchUtils::checkConsistency(std::vector<std::vector<xferBenchIOV>> &iov_lis
             } else {
                 // This will be called on target process in case of write and
                 // on initiator process in case of read
-                if ((xferBenchConfig::op_type == XFERBENCH_OP_WRITE &&
-                     xferBenchConfig::target_seg_type == XFERBENCH_SEG_TYPE_VRAM) ||
-                    (xferBenchConfig::op_type == XFERBENCH_OP_READ &&
-                     xferBenchConfig::initiator_seg_type == XFERBENCH_SEG_TYPE_VRAM)) {
+                if ((config.op_type == XFERBENCH_OP_WRITE &&
+                     config.target_seg_type == XFERBENCH_SEG_TYPE_VRAM) ||
+                    (config.op_type == XFERBENCH_OP_READ &&
+                     config.initiator_seg_type == XFERBENCH_SEG_TYPE_VRAM)) {
                     addr = calloc(1, len);
                     is_allocated = true;
                     copyVramToHost(addr, (void *)iov.addr, len);
-                } else if ((xferBenchConfig::op_type == XFERBENCH_OP_WRITE &&
-                            xferBenchConfig::target_seg_type == XFERBENCH_SEG_TYPE_DRAM) ||
-                           (xferBenchConfig::op_type == XFERBENCH_OP_READ &&
-                            xferBenchConfig::initiator_seg_type == XFERBENCH_SEG_TYPE_DRAM)) {
+                } else if ((config.op_type == XFERBENCH_OP_WRITE &&
+                            config.target_seg_type == XFERBENCH_SEG_TYPE_DRAM) ||
+                           (config.op_type == XFERBENCH_OP_READ &&
+                            config.initiator_seg_type == XFERBENCH_SEG_TYPE_DRAM)) {
                     addr = (void *)iov.addr;
                 }
             }
 
-            if ("WRITE" == xferBenchConfig::op_type) {
+            if ("WRITE" == config.op_type) {
                 check_val = XFERBENCH_INITIATOR_BUFFER_ELEMENT;
-            } else if ("READ" == xferBenchConfig::op_type) {
+            } else if ("READ" == config.op_type) {
                 check_val = XFERBENCH_TARGET_BUFFER_ELEMENT;
             }
             rc = allBytesAre(addr, len, check_val);
@@ -1050,34 +1071,48 @@ xferBenchUtils::checkConsistency(std::vector<std::vector<xferBenchIOV>> &iov_lis
 }
 
 bool
-xferBenchUtils::validateTransfer(bool is_initiator,
+xferBenchUtils::validateTransfer(const xferBenchConfig &config,
+                                 bool is_initiator,
                                  std::vector<std::vector<xferBenchIOV>> &local_lists,
                                  std::vector<std::vector<xferBenchIOV>> &remote_lists) {
-    if (!xferBenchConfig::check_consistency) {
+    if (!config.check_consistency) {
         return true;
     }
 
     if (is_initiator) {
-        if (xferBenchConfig::op_type == XFERBENCH_OP_READ) {
-            return checkConsistency(local_lists);
-        } else if (xferBenchConfig::op_type == XFERBENCH_OP_WRITE) {
-            if (xferBenchConfig::isStorageBackend()) {
-                return checkConsistency(remote_lists);
+        if (config.op_type == XFERBENCH_OP_READ) {
+            return checkConsistency(config, local_lists);
+        } else if (config.op_type == XFERBENCH_OP_WRITE) {
+            if (config.isStorageBackend()) {
+                return checkConsistency(config, remote_lists);
             }
         }
     } else {
         // Target
-        if (xferBenchConfig::op_type == XFERBENCH_OP_WRITE) {
-            return checkConsistency(local_lists);
+        if (config.op_type == XFERBENCH_OP_WRITE) {
+            return checkConsistency(config, local_lists);
         }
     }
 
     return true;
 }
 
+bool
+xferBenchUtils::validateTransfer(const nixlbench::benchmarkConfig &config,
+                                 bool is_initiator,
+                                 std::vector<std::vector<xferBenchIOV>> &local_lists,
+                                 std::vector<std::vector<xferBenchIOV>> &remote_lists) {
+    if (!config.common.check_consistency) {
+        return true;
+    }
+
+    xferBenchConfig legacy_config = nixlbench::makeLegacyConfigFromBenchmarkConfig(config);
+    return validateTransfer(legacy_config, is_initiator, local_lists, remote_lists);
+}
+
 void
-xferBenchUtils::printStatsHeader() {
-    if (IS_PAIRWISE_AND_SG() && rt->getSize() > 2) {
+xferBenchUtils::printStatsHeader(const xferBenchConfig &config) {
+    if (IS_PAIRWISE_AND_SG(config) && rt->getSize() > 2) {
         // clang-format off
         std::cout << std::left
                   << std::setw(20) << "Block Size (B)"
@@ -1110,11 +1145,54 @@ xferBenchUtils::printStatsHeader() {
                   << std::endl;
         // clang-format on
     }
-    xferBenchConfig::printSeparator('-');
+    config.printSeparator('-');
 }
 
 void
-xferBenchUtils::printStats(bool is_target,
+xferBenchUtils::printStatsHeader(const nixlbench::benchmarkConfig &config) {
+    if (config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE &&
+        config.transfer.mode == XFERBENCH_MODE_SG && rt->getSize() > 2) {
+        // clang-format off
+        std::cout << std::left
+                  << std::setw(20) << "Block Size (B)"
+                  << std::setw(15) << "Batch Size"
+                  << std::setw(15) << "B/W (GB/Sec)"
+                  << std::setw(25) << "Aggregate B/W (GB/Sec)"
+                  << std::setw(20) << "Network Util (%)"
+                  << std::setw(15) << "Avg Lat. (us)"
+                  << std::setw(15) << "Avg Prep (us)"
+                  << std::setw(15) << "P99 Prep (us)"
+                  << std::setw(15) << "Avg Post (us)"
+                  << std::setw(15) << "P99 Post (us)"
+                  << std::setw(15) << "Avg Tx (us)"
+                  << std::setw(15) << "P99 Tx (us)"
+                  << std::endl;
+        // clang-format on
+    } else {
+        // clang-format off
+        std::cout << std::left
+                  << std::setw(20) << "Block Size (B)"
+                  << std::setw(15) << "Batch Size"
+                  << std::setw(15) << "B/W (GB/Sec)"
+                  << std::setw(15) << "Avg Lat. (us)"
+                  << std::setw(15) << "Avg Prep (us)"
+                  << std::setw(15) << "P99 Prep (us)"
+                  << std::setw(15) << "Avg Post (us)"
+                  << std::setw(15) << "P99 Post (us)"
+                  << std::setw(15) << "Avg Tx (us)"
+                  << std::setw(15) << "P99 Tx (us)"
+                  << std::endl;
+        // clang-format on
+    }
+
+    constexpr size_t separator_width = 160;
+    std::cout << std::string(separator_width, '-') << std::endl;
+}
+
+
+void
+xferBenchUtils::printStats(const nixlbench::benchmarkConfig &config,
+                           bool is_target,
                            size_t block_size,
                            size_t batch_size,
                            xferBenchStats stats) {
@@ -1122,39 +1200,36 @@ xferBenchUtils::printStats(bool is_target,
     double avg_latency = 0, throughput_gb = 0;
     double totalbw = 0;
 
-    int total_iter = xferBenchConfig::num_iter;
-    int per_thread_iter = total_iter / xferBenchConfig::num_threads;
+    int num_iter = config.common.num_iter;
 
     if (block_size > LARGE_BLOCK_SIZE) {
-        total_iter /= xferBenchConfig::large_blk_iter_ftr;
-        per_thread_iter /= xferBenchConfig::large_blk_iter_ftr;
+        num_iter /= config.common.large_blk_iter_ftr;
     }
 
     // Targets don't participate in reduction - they have no throughput to contribute
-    if (is_target && IS_PAIRWISE_AND_SG() && rt->getSize() > 2) {
+    if (is_target && config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE && config.transfer.mode == XFERBENCH_MODE_SG && rt->getSize() > 2) {
         return;
     }
 
     double total_duration = stats.total_duration.avg();
 
-    total_data_transferred = ((block_size * batch_size) * total_iter); // In Bytes
-    avg_latency = (total_duration / (per_thread_iter * batch_size)); // In microsec
-    if (IS_PAIRWISE_AND_MG() ||
-        (IS_PAIRWISE_AND_SG() && xferBenchConfig::num_initiator_dev > 1 && rt->getSize() == 1)) {
-        total_data_transferred *= xferBenchConfig::num_initiator_dev; // In Bytes
-        avg_latency /= xferBenchConfig::num_initiator_dev; // In microsec
+    total_data_transferred = ((block_size * batch_size) * num_iter); // In Bytes
+    avg_latency = (total_duration / (num_iter * batch_size)); // In microsec
+    if (config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE && config.transfer.mode == XFERBENCH_MODE_MG) {
+        total_data_transferred *= config.worker.num_initiator_dev; // In Bytes
+        avg_latency /= config.worker.num_initiator_dev; // In microsec
     }
 
     throughput_gb = (((double)total_data_transferred / (1000 * 1000 * 1000)) /
                      (total_duration / 1e6)); // In GB/Sec
 
-    if (IS_PAIRWISE_AND_SG() && rt->getSize() > 2) {
+    if (config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE && config.transfer.mode == XFERBENCH_MODE_SG && rt->getSize() > 2) {
         rt->reduceSumDouble(&throughput_gb, &totalbw, 0);
     } else {
         totalbw = throughput_gb;
     }
 
-    if (IS_PAIRWISE_AND_SG() && rt->getRank() != 0) {
+    if (config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE && config.transfer.mode == XFERBENCH_MODE_SG && rt->getRank() != 0) {
         return;
     }
 
@@ -1166,7 +1241,97 @@ xferBenchUtils::printStats(bool is_target,
     double transfer_p99_duration = stats.transfer_duration.p99();
 
     // Tabulate print with fixed width for each string
-    if (IS_PAIRWISE_AND_SG() && rt->getSize() > 2) {
+    if (config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE && config.transfer.mode == XFERBENCH_MODE_SG && rt->getSize() > 2) {
+        // clang-format off
+        std::cout << std::left << std::fixed << std::setprecision(6)
+                  << std::setw(20) << block_size
+                  << std::setw(15) << batch_size
+                  << std::setw(15) << throughput_gb
+                  << std::setw(25) << totalbw
+                  << std::setw(20) << (totalbw / (rt->getSize() / 2 * MAXBW)) * 100
+                  << std::setprecision(1)
+                  << std::setw(15) << avg_latency
+                  << std::setw(15) << prepare_duration
+                  << std::setw(15) << prepare_p99_duration
+                  << std::setw(15) << post_duration
+                  << std::setw(15) << post_p99_duration
+                  << std::setw(15) << transfer_duration
+                  << std::setw(15) << transfer_p99_duration
+                  << std::endl;
+        // clang-format on
+    } else {
+        // clang-format off
+        std::cout << std::left << std::fixed << std::setprecision(6)
+                  << std::setw(20) << block_size
+                  << std::setw(15) << batch_size
+                  << std::setw(15) << throughput_gb
+                  << std::setprecision(1)
+                  << std::setw(15) << avg_latency
+                  << std::setw(15) << prepare_duration
+                  << std::setw(15) << prepare_p99_duration
+                  << std::setw(15) << post_duration
+                  << std::setw(15) << post_p99_duration
+                  << std::setw(15) << transfer_duration
+                  << std::setw(15) << transfer_p99_duration
+                  << std::endl;
+        // clang-format on
+    }
+}
+
+void
+xferBenchUtils::printStats(const xferBenchConfig &config,
+                           bool is_target,
+                           size_t block_size,
+                           size_t batch_size,
+                           xferBenchStats stats) {
+    size_t total_data_transferred = 0;
+    double avg_latency = 0, throughput_gb = 0;
+    double totalbw = 0;
+
+    int total_iter = config.num_iter;
+    int per_thread_iter = total_iter / config.num_threads;
+
+    if (block_size > LARGE_BLOCK_SIZE) {
+        total_iter /= config.large_blk_iter_ftr;
+        per_thread_iter /= config.large_blk_iter_ftr;
+    }
+
+    // Targets don't participate in reduction - they have no throughput to contribute
+    if (is_target && IS_PAIRWISE_AND_SG(config) && rt->getSize() > 2) {
+        return;
+    }
+
+    double total_duration = stats.total_duration.avg();
+
+    total_data_transferred = ((block_size * batch_size) * total_iter); // In Bytes
+    avg_latency = (total_duration / (per_thread_iter * batch_size)); // In microsec
+    if (IS_PAIRWISE_AND_MG(config) || (IS_PAIRWISE_AND_SG(config) && config.num_initiator_dev > 1 && rt->getSize() == 1)) {
+        total_data_transferred *= config.num_initiator_dev; // In Bytes
+        avg_latency /= config.num_initiator_dev; // In microsec
+    }
+
+    throughput_gb = (((double)total_data_transferred / (1000 * 1000 * 1000)) /
+                     (total_duration / 1e6)); // In GB/Sec
+
+    if (IS_PAIRWISE_AND_SG(config) && rt->getSize() > 2) {
+        rt->reduceSumDouble(&throughput_gb, &totalbw, 0);
+    } else {
+        totalbw = throughput_gb;
+    }
+
+    if (IS_PAIRWISE_AND_SG(config) && rt->getRank() != 0) {
+        return;
+    }
+
+    double prepare_duration = stats.prepare_duration.avg();
+    double prepare_p99_duration = stats.prepare_duration.p99();
+    double post_duration = stats.post_duration.avg();
+    double post_p99_duration = stats.post_duration.p99();
+    double transfer_duration = stats.transfer_duration.avg();
+    double transfer_p99_duration = stats.transfer_duration.p99();
+
+    // Tabulate print with fixed width for each string
+    if (IS_PAIRWISE_AND_SG(config) && rt->getSize() > 2) {
         // clang-format off
         std::cout << std::left << std::fixed << std::setprecision(6)
                   << std::setw(20) << block_size
@@ -1204,73 +1369,75 @@ xferBenchUtils::printStats(bool is_target,
 }
 
 std::string
-xferBenchUtils::buildAwsCredentials() {
+xferBenchUtils::buildAwsCredentials(const xferBenchConfig &config) {
     std::string env_setup = "";
 
-    if (!xferBenchConfig::obj_access_key.empty()) {
-        env_setup += "AWS_ACCESS_KEY_ID=" + xferBenchConfig::obj_access_key + " ";
+    if (!config.obj_access_key.empty()) {
+        env_setup += "AWS_ACCESS_KEY_ID=" + config.obj_access_key + " ";
     }
-    if (!xferBenchConfig::obj_secret_key.empty()) {
-        env_setup += "AWS_SECRET_ACCESS_KEY=" + xferBenchConfig::obj_secret_key + " ";
+    if (!config.obj_secret_key.empty()) {
+        env_setup += "AWS_SECRET_ACCESS_KEY=" + config.obj_secret_key + " ";
     }
-    if (!xferBenchConfig::obj_session_token.empty()) {
-        env_setup += "AWS_SESSION_TOKEN=" + xferBenchConfig::obj_session_token + " ";
+    if (!config.obj_session_token.empty()) {
+        env_setup += "AWS_SESSION_TOKEN=" + config.obj_session_token + " ";
     }
-    if (!xferBenchConfig::obj_region.empty()) {
-        env_setup += "AWS_DEFAULT_REGION=" + xferBenchConfig::obj_region + " ";
+    if (!config.obj_region.empty()) {
+        env_setup += "AWS_DEFAULT_REGION=" + config.obj_region + " ";
     }
 
     return env_setup;
 }
 
 bool
-xferBenchUtils::putObj(size_t buffer_size, const std::string &name) {
-    if (xferBenchConfig::backend == XFERBENCH_BACKEND_OBJ) {
-        return putObjS3(buffer_size, name);
-    } else if (xferBenchConfig::backend == XFERBENCH_BACKEND_AZURE_BLOB) {
-        return putObjAzure(buffer_size, name);
+xferBenchUtils::putObj(const xferBenchConfig &config, size_t buffer_size, const std::string &name) {
+    if (config.backend == XFERBENCH_BACKEND_OBJ) {
+        return putObjS3(config, buffer_size, name);
+    } else if (config.backend == XFERBENCH_BACKEND_AZURE_BLOB) {
+        return putObjAzure(config, buffer_size, name);
     } else {
         std::cerr << "Error: putObj called with unsupported object storage backend: "
-                  << xferBenchConfig::backend << std::endl;
+                  << config.backend << std::endl;
         return false;
     }
 }
 
 bool
-xferBenchUtils::getObj(const std::string &name) {
-    if (xferBenchConfig::backend == XFERBENCH_BACKEND_OBJ) {
-        return getObjS3(name);
-    } else if (xferBenchConfig::backend == XFERBENCH_BACKEND_AZURE_BLOB) {
-        return getObjAzure(name);
+xferBenchUtils::getObj(const xferBenchConfig &config, const std::string &name) {
+    if (config.backend == XFERBENCH_BACKEND_OBJ) {
+        return getObjS3(config, name);
+    } else if (config.backend == XFERBENCH_BACKEND_AZURE_BLOB) {
+        return getObjAzure(config, name);
     } else {
         std::cerr << "Error: getObj called with unsupported object storage backend: "
-                  << xferBenchConfig::backend << std::endl;
+                  << config.backend << std::endl;
         return false;
     }
 }
 
 bool
-xferBenchUtils::rmObj(const std::string &name) {
-    if (xferBenchConfig::backend == XFERBENCH_BACKEND_OBJ) {
-        return rmObjS3(name);
-    } else if (xferBenchConfig::backend == XFERBENCH_BACKEND_AZURE_BLOB) {
-        return rmObjAzure(name);
+xferBenchUtils::rmObj(const xferBenchConfig &config, const std::string &name) {
+    if (config.backend == XFERBENCH_BACKEND_OBJ) {
+        return rmObjS3(config, name);
+    } else if (config.backend == XFERBENCH_BACKEND_AZURE_BLOB) {
+        return rmObjAzure(config, name);
     } else {
         std::cerr << "Error: rmObj called with unsupported object storage backend: "
-                  << xferBenchConfig::backend << std::endl;
+                  << config.backend << std::endl;
         return false;
     }
 }
 
 bool
-xferBenchUtils::putObjS3(size_t buffer_size, const std::string &name) {
+xferBenchUtils::putObjS3(const xferBenchConfig &config,
+                         size_t buffer_size,
+                         const std::string &name) {
     std::string filename = "/tmp/" + name;
     int fd = createFile(buffer_size, filename);
     if (fd < 0) {
         return false;
     }
 
-    std::string bucket_name = xferBenchConfig::obj_bucket_name;
+    std::string bucket_name = config.obj_bucket_name;
     if (bucket_name.empty()) {
         std::cerr << "Error: Invalid bucket name for S3 object put" << std::endl;
         close(fd);
@@ -1278,12 +1445,12 @@ xferBenchUtils::putObjS3(size_t buffer_size, const std::string &name) {
         return false;
     }
     std::string aws_cmd = "aws s3 cp " + filename + " s3://" + bucket_name;
-    if (!xferBenchConfig::obj_endpoint_override.empty()) {
+    if (!config.obj_endpoint_override.empty()) {
         aws_cmd +=
-            " --checksum-algorithm SHA256 --endpoint-url " + xferBenchConfig::obj_endpoint_override;
+            " --checksum-algorithm SHA256 --endpoint-url " + config.obj_endpoint_override;
     }
 
-    std::string full_cmd = buildAwsCredentials() + aws_cmd;
+    std::string full_cmd = buildAwsCredentials(config) + aws_cmd;
     std::cout << "Putting S3 object: " << name << " in bucket: " << bucket_name
               << " (size: " << buffer_size << " bytes)" << std::endl;
 
@@ -1300,18 +1467,18 @@ xferBenchUtils::putObjS3(size_t buffer_size, const std::string &name) {
 }
 
 bool
-xferBenchUtils::getObjS3(const std::string &name) {
-    std::string bucket_name = xferBenchConfig::obj_bucket_name;
+xferBenchUtils::getObjS3(const xferBenchConfig &config, const std::string &name) {
+    std::string bucket_name = config.obj_bucket_name;
     if (bucket_name.empty()) {
         std::cerr << "Error: Invalid bucket name for S3 object get" << std::endl;
         return false;
     }
     std::string aws_cmd = "aws s3 cp s3://" + bucket_name + "/" + name + " " + name;
-    if (!xferBenchConfig::obj_endpoint_override.empty()) {
-        aws_cmd += " --endpoint-url " + xferBenchConfig::obj_endpoint_override;
+    if (!config.obj_endpoint_override.empty()) {
+        aws_cmd += " --endpoint-url " + config.obj_endpoint_override;
     }
 
-    std::string full_cmd = buildAwsCredentials() + aws_cmd;
+    std::string full_cmd = buildAwsCredentials(config) + aws_cmd;
     std::cout << "Getting S3 object: " << name << " from bucket: " << bucket_name << std::endl;
 
     int result = system(full_cmd.c_str());
@@ -1325,19 +1492,19 @@ xferBenchUtils::getObjS3(const std::string &name) {
 }
 
 bool
-xferBenchUtils::rmObjS3(const std::string &name) {
-    std::string bucket_name = xferBenchConfig::obj_bucket_name;
+xferBenchUtils::rmObjS3(const xferBenchConfig &config, const std::string &name) {
+    std::string bucket_name = config.obj_bucket_name;
     if (bucket_name.empty()) {
         std::cerr << "Error: Invalid bucket name for S3 object get" << std::endl;
         return false;
     }
 
     std::string aws_cmd = "aws s3 rm s3://" + bucket_name + "/" + name;
-    if (!xferBenchConfig::obj_endpoint_override.empty()) {
-        aws_cmd += " --endpoint-url " + xferBenchConfig::obj_endpoint_override;
+    if (!config.obj_endpoint_override.empty()) {
+        aws_cmd += " --endpoint-url " + config.obj_endpoint_override;
     }
 
-    std::string full_cmd = buildAwsCredentials() + aws_cmd;
+    std::string full_cmd = buildAwsCredentials(config) + aws_cmd;
     std::cout << "Removing S3 object: " << name << " from bucket: " << bucket_name << std::endl;
 
     int result = system(full_cmd.c_str());
@@ -1384,14 +1551,16 @@ xferBenchUtils::cleanupFile(const int fd, const std::string &filename) {
 }
 
 bool
-xferBenchUtils::putObjAzure(size_t buffer_size, const std::string &name) {
+xferBenchUtils::putObjAzure(const xferBenchConfig &config,
+                            size_t buffer_size,
+                            const std::string &name) {
     std::string filename = "/tmp/" + name;
     int fd = createFile(buffer_size, filename);
     if (fd < 0) {
         return false;
     }
 
-    std::string az_cli_params = buildCommonAzCliBlobParams(name);
+    std::string az_cli_params = buildCommonAzCliBlobParams(config, name);
     if (az_cli_params.empty()) {
         return false;
     }
@@ -1411,8 +1580,8 @@ xferBenchUtils::putObjAzure(size_t buffer_size, const std::string &name) {
 }
 
 bool
-xferBenchUtils::getObjAzure(const std::string &name) {
-    std::string az_cli_params = buildCommonAzCliBlobParams(name);
+xferBenchUtils::getObjAzure(const xferBenchConfig &config, const std::string &name) {
+    std::string az_cli_params = buildCommonAzCliBlobParams(config, name);
     if (az_cli_params.empty()) {
         return false;
     }
@@ -1429,8 +1598,8 @@ xferBenchUtils::getObjAzure(const std::string &name) {
 }
 
 bool
-xferBenchUtils::rmObjAzure(const std::string &name) {
-    std::string az_cli_params = buildCommonAzCliBlobParams(name);
+xferBenchUtils::rmObjAzure(const xferBenchConfig &config, const std::string &name) {
+    std::string az_cli_params = buildCommonAzCliBlobParams(config, name);
     if (az_cli_params.empty()) {
         return false;
     }
@@ -1447,11 +1616,12 @@ xferBenchUtils::rmObjAzure(const std::string &name) {
 }
 
 std::string
-xferBenchUtils::buildCommonAzCliBlobParams(const std::string &blob_name) {
-    std::string account_url = xferBenchConfig::azure_blob_account_url;
-    std::string connection_string = xferBenchConfig::azure_blob_connection_string;
+xferBenchUtils::buildCommonAzCliBlobParams(const xferBenchConfig &config,
+                                           const std::string &blob_name) {
+    std::string account_url = config.azure_blob_account_url;
+    std::string connection_string = config.azure_blob_connection_string;
 
-    std::string container_name = xferBenchConfig::azure_blob_container_name;
+    std::string container_name = config.azure_blob_container_name;
     if (container_name.empty()) {
         std::cerr << "Error: Invalid Azure Storage container name" << std::endl;
         return "";
