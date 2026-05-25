@@ -951,7 +951,6 @@ xferBenchUtils::checkConsistency(const xferBenchConfig &config,
                 config.backend == XFERBENCH_BACKEND_GPUNETIO) {
                 if (config.op_type == XFERBENCH_OP_READ) {
                     if (config.initiator_seg_type == XFERBENCH_SEG_TYPE_VRAM) {
-#if HAVE_CUDA
                         if (posix_memalign(&addr, config.page_size, len) != 0) {
                             std::cerr << "Failed to allocate aligned buffer of size: " << len
                                       << std::endl;
@@ -1036,14 +1035,13 @@ xferBenchUtils::checkConsistency(const xferBenchConfig &config,
                      config.target_seg_type == XFERBENCH_SEG_TYPE_VRAM) ||
                     (config.op_type == XFERBENCH_OP_READ &&
                      config.initiator_seg_type == XFERBENCH_SEG_TYPE_VRAM)) {
-#if HAVE_CUDA
                     addr = calloc(1, len);
                     is_allocated = true;
                     copyVramToHost(addr, (void *)iov.addr, len);
-                } else if ((xferBenchConfig::op_type == XFERBENCH_OP_WRITE &&
-                            xferBenchConfig::target_seg_type == XFERBENCH_SEG_TYPE_DRAM) ||
-                           (xferBenchConfig::op_type == XFERBENCH_OP_READ &&
-                            xferBenchConfig::initiator_seg_type == XFERBENCH_SEG_TYPE_DRAM)) {
+                } else if ((config.op_type == XFERBENCH_OP_WRITE &&
+                            config.target_seg_type == XFERBENCH_SEG_TYPE_DRAM) ||
+                           (config.op_type == XFERBENCH_OP_READ &&
+                            config.initiator_seg_type == XFERBENCH_SEG_TYPE_DRAM)) {
                     addr = (void *)iov.addr;
                 }
             }
@@ -1307,7 +1305,7 @@ xferBenchUtils::printStats(const xferBenchConfig &config,
 
     total_data_transferred = ((block_size * batch_size) * total_iter); // In Bytes
     avg_latency = (total_duration / (per_thread_iter * batch_size)); // In microsec
-    if (IS_PAIRWISE_AND_MG() || (IS_PAIRWISE_AND_SG() && config.num_initiator_dev > 1 && rt->getSize() == 1)) {
+    if (IS_PAIRWISE_AND_MG(config) || (IS_PAIRWISE_AND_SG(config) && config.num_initiator_dev > 1 && rt->getSize() == 1)) {
         total_data_transferred *= config.num_initiator_dev; // In Bytes
         avg_latency /= config.num_initiator_dev; // In microsec
     }

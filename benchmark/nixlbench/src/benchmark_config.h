@@ -31,6 +31,8 @@ struct benchmarkCommonConfig {
 struct runtimeConfig {
     std::string type = "ETCD";
     std::string etcd_endpoints;
+    std::string asio_address;
+    std::uint16_t asio_port = 12345;
 };
 
 struct transferConfig {

@@ -21,6 +21,7 @@
  #include <filesystem>
  #include <string>
  #include <map>
+ #include <set>
  #include <memory>
  #include <vector>
  #include <mutex>
@@ -67,7 +68,7 @@
      nixl_mem_list_t getBackendMems() const;
      nixlBackendPluginCapabilities
      getBackendCapabilities() const;
-
+ 
  private:
      nixlBackendPlugin *plugin_;
  };
@@ -112,7 +113,7 @@
      nixlPluginManager& operator=(const nixlPluginManager&) = delete;
  
      void
-     loadPluginsFromList(const std::string &filename);
+     discoverPluginsFromList(const std::string &filename);
  
      // Load a specific backend plugin
      std::shared_ptr<const nixlBackendPluginHandle>
@@ -142,6 +143,10 @@
      std::vector<nixl_backend_t>
      getLoadedBackendPluginNames();
  
+     // Get all available backend plugin names (loaded + discovered on disk)
+     std::vector<nixl_backend_t>
+     getAvailBackendPluginNames();
+ 
      // Get all loaded telemetry plugin names
      std::vector<nixl_telemetry_plugin_t>
      getLoadedTelemetryPluginNames();
@@ -162,6 +167,10 @@
          loaded_backend_plugins_;
      std::map<nixl_telemetry_plugin_t, std::shared_ptr<const nixlTelemetryPluginHandle>>
          loaded_telemetry_plugins_;
+     // Plugins discovered on disk but not yet dlopen'd
+     std::set<nixl_backend_t> discovered_backend_plugins_;
+     // Explicit paths from the plugin list file (name -> .so path)
+     std::map<nixl_backend_t, std::string> explicit_plugin_paths_;
      std::vector<std::string> plugin_dirs_;
      std::vector<nixlBackendStaticPluginInfo> backend_static_plugins_;
      std::vector<nixlTelemetryStaticPluginInfo> telemetry_static_plugins_;

@@ -335,6 +335,8 @@ makeBenchmarkConfigFromLegacy(const xferBenchConfig &legacy_config) {
 
     config.runtime.type = legacy_config.runtime_type;
     config.runtime.etcd_endpoints = legacy_config.etcd_endpoints;
+    config.runtime.asio_address = legacy_config.asio_address;
+    config.runtime.asio_port = legacy_config.asio_port;
 
     config.transfer.initiator_seg_type = legacy_config.initiator_seg_type;
     config.transfer.target_seg_type = legacy_config.target_seg_type;

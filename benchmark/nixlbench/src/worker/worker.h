@@ -48,7 +48,7 @@ class xferBenchWorker {
         std::string name;
         xferBenchRT *rt;
         const nixlbench::benchmarkConfig &benchmark_config;
-        xferBenchConfig &config;
+        xferBenchConfig config;
         static std::atomic<int> terminate;
 
     public:

@@ -121,7 +121,7 @@ createRT(const nixlbench::benchmarkConfig &config, std::atomic<int> *terminate) 
                       << std::endl;
             exit(EXIT_FAILURE);
         }
-        return new xferBenchAsioRT(config.asio_address, config.asio_port);
+        return new xferBenchAsioRT(config.runtime.asio_address, config.runtime.asio_port);
     }
 
     std::cerr << "Invalid runtime: " << config.runtime.type << std::endl;

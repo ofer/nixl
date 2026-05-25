@@ -63,8 +63,6 @@ resolveVramSegment() {
 #endif
 }
 
-namespace {
-
 nixl_mem_t
 getSegType(const nixlbench::benchmarkConfig &config, bool is_initiator) {
     const std::string &seg_type_str =
@@ -74,7 +72,7 @@ getSegType(const nixlbench::benchmarkConfig &config, bool is_initiator) {
     }
     if (seg_type_str == XFERBENCH_SEG_TYPE_VRAM) {
         nixl_mem_t seg_type;
-        HANDLE_VRAM_SEGMENT(seg_type);
+        seg_type = resolveVramSegment();
         return seg_type;
     }
 
@@ -91,7 +89,7 @@ getLegacySegType(const xferBenchConfig &config, bool is_initiator) {
     }
     if (seg_type_str == XFERBENCH_SEG_TYPE_VRAM) {
         nixl_mem_t seg_type;
-        HANDLE_VRAM_SEGMENT(seg_type);
+        seg_type = resolveVramSegment();
         return seg_type;
     }
 
@@ -185,8 +183,6 @@ printNixlBackendParams(const nixlbench::benchmarkConfig &config,
         std::cout << "AZURE_BLOB backend" << std::endl;
     }
 }
-
-} // namespace
 
 xferBenchNixlWorker::xferBenchNixlWorker(const nixlbench::benchmarkConfig &benchmark_config,
                                          std::vector<std::string> devices)
@@ -404,9 +400,9 @@ getVramDescCudaVmm(int devid, size_t buffer_size, uint8_t memset_value) {
 }
 
 static void
-cleanupVramCuda(xferBenchIOV &iov) {
+cleanupVramCuda(bool enable_vmm,xferBenchIOV &iov) {
     CHECK_CUDA_ERROR(cudaSetDevice(iov.devId), "Failed to set device");
-    if (xferBenchConfig::enable_vmm) {
+    if (enable_vmm) {
         CHECK_CUDA_DRIVER_ERROR(cuMemUnmap(iov.addr, iov.len), "Failed to unmap memory");
         CHECK_CUDA_DRIVER_ERROR(cuMemRelease(iov.handle), "Failed to release memory");
         CHECK_CUDA_DRIVER_ERROR(cuMemAddressFree(iov.addr, iov.padded_size),
@@ -673,7 +669,7 @@ xferBenchNixlWorker::cleanupBasicDescVram(xferBenchIOV &iov) {
     }
 
 #if HAVE_CUDA
-    cleanupVramCuda(iov);
+    cleanupVramCuda(config.enable_vmm, iov);
 #else
     std::cerr << "VRAM not supported without CUDA or Neuron" << std::endl;
 #endif
@@ -1230,7 +1226,7 @@ xferBenchNixlWorker::exchangeIOV(const std::vector<std::vector<xferBenchIOV>> &l
                 }
             }
             res.push_back(remote_iov_list);
-            if (XFERBENCH_BACKEND_GUSLI == xferBenchConfig::backend) {
+            if (XFERBENCH_BACKEND_GUSLI == config.backend) {
                 file_offset += block_size;
             }
         }
@@ -1593,7 +1589,7 @@ xferBenchNixlWorker::poll(size_t block_size) {
 
 int
 xferBenchNixlWorker::synchronizeStart() {
-    if (IS_PAIRWISE_AND_SG()) {
+    if (IS_PAIRWISE_AND_SG(config)) {
         std::cout << "Waiting for all processes to start... (expecting " << rt->getSize()
                   << " total: " << config.num_initiator_dev << " initiators and "
                   << config.num_target_dev << " targets)" << std::endl;
