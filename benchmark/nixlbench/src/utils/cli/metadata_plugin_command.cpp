@@ -23,7 +23,7 @@ makeOptionValue(const std::string &default_value, option_kind_t type) {
 
 void
 appendFileWorkloadOptions(std::vector<cliOption> &options,
-                          metadata_plugin_option_map_t &option_values) {
+                          metadataPluginOptionMap &option_values) {
     auto &filepath = option_values["filepath"];
     filepath = {"", false, false, false};
     options.push_back({"filepath",
@@ -63,7 +63,7 @@ appendFileWorkloadOptions(std::vector<cliOption> &options,
 
 std::vector<cliOption>
 buildOptions(const nixl_b_params_t &option_specs,
-             metadata_plugin_option_map_t &option_values,
+             metadataPluginOptionMap &option_values,
              const bool canReadWriteFiles) {
     std::vector<cliOption> options;
     options.reserve(option_specs.size() + (canReadWriteFiles ? 4 : 0));
@@ -127,7 +127,7 @@ metadataPluginCommand::capabilities() const {
     return capabilities_;
 }
 
-const metadata_plugin_option_map_t &
+const metadataPluginOptionMap &
 metadataPluginCommand::metadataOptions() const {
     return optionValues_;
 }

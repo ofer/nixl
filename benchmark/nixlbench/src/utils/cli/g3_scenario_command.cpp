@@ -55,124 +55,6 @@ g3Signaled() {
     return g3_terminate.load() != 0;
 }
 
-size_t
-parseG3FileSize(const std::string &input) {
-    if (input.empty()) {
-        return 0;
-    }
-
-    size_t suffix_pos = input.find_first_not_of("0123456789");
-    const char *number_end = suffix_pos == std::string_view::npos ? input.data() + input.size() :
-                                                                    input.data() + suffix_pos;
-
-    size_t value = 0;
-    auto [ptr, ec] = std::from_chars(input.data(), number_end, value);
-    if (ec != std::errc{} || ptr != number_end) {
-        return 0;
-    }
-
-    if (suffix_pos == std::string_view::npos) {
-        return value;
-    }
-
-    std::string_view suffix(input.data() + suffix_pos, input.size() - suffix_pos);
-    auto to_upper = [](char c) {
-        return static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-    };
-
-    size_t multiplier = 1;
-    switch (to_upper(suffix[0])) {
-    case 'K':
-        multiplier = 1000LL;
-        break;
-    case 'M':
-        multiplier = 1000000LL;
-        break;
-    case 'G':
-        multiplier = 1000000000LL;
-        break;
-    case 'T':
-        multiplier = 1000000000000LL;
-        break;
-    default:
-        return value;
-    }
-
-    if (suffix.size() >= 2 && to_upper(suffix[1]) == 'I') {
-        switch (to_upper(suffix[0])) {
-        case 'K':
-            multiplier = 1LL << 10;
-            break;
-        case 'M':
-            multiplier = 1LL << 20;
-            break;
-        case 'G':
-            multiplier = 1LL << 30;
-            break;
-        case 'T':
-            multiplier = 1LL << 40;
-            break;
-        default:
-            break;
-        }
-    }
-
-    return value * multiplier;
-}
-
-const metadataPluginOptionValue *
-findPluginOption(const metadata_plugin_option_map_t &options, const std::string &name) {
-    const auto iter = options.find(name);
-    return iter == options.end() ? nullptr : &iter->second;
-}
-
-std::string
-pluginStringOption(const metadata_plugin_option_map_t &options,
-                   const std::string &name,
-                   const std::string &default_value = "") {
-    const auto *option = findPluginOption(options, name);
-    return option == nullptr ? default_value : option->value;
-}
-
-bool
-pluginBoolOption(const metadata_plugin_option_map_t &options,
-                 const std::string &name,
-                 bool default_value = false) {
-    const auto *option = findPluginOption(options, name);
-    if (option == nullptr) {
-        return default_value;
-    }
-    return option->boolValue || option->value == "true" || option->value == "1";
-}
-
-int
-pluginIntOption(const metadata_plugin_option_map_t &options,
-                const std::string &name,
-                int default_value = 1) {
-    const auto *option = findPluginOption(options, name);
-    if (option == nullptr || option->value.empty()) {
-        return default_value;
-    }
-
-    try {
-        return std::stoi(option->value);
-    }
-    catch (const std::exception &) {
-        return default_value;
-    }
-}
-
-void
-iovListToNixlXferDlist(const std::vector<xferBenchIOV> &iov_list, nixl_xfer_dlist_t &dlist) {
-    nixlBasicDesc desc;
-    for (const auto &iov : iov_list) {
-        desc.addr = iov.addr;
-        desc.len = iov.len;
-        desc.devId = iov.devId;
-        dlist.addDesc(desc);
-    }
-}
-
 nixl_status_t
 executeSingleTransfer(nixlAgent &agent,
                       nixlXferReqH *req,
@@ -399,11 +281,11 @@ makeG3BenchmarkConfig(const g3ScenarioRequest &request,
     config.transfer.op_type = request.action_mode == "read" || request.action_mode == "READ" ?
         XFERBENCH_OP_READ :
         XFERBENCH_OP_WRITE;
-    config.transfer.total_buffer_size = parseG3FileSize(request.file_size);
-    config.storage.filepath = pluginStringOption(metadata, "filepath");
-    config.storage.filenames = pluginStringOption(metadata, "filenames");
-    config.storage.num_files = request.parallel_threads * pluginIntOption(metadata, "num_files", 1);
-    config.storage.enable_direct = pluginBoolOption(metadata, "enable_direct");
+    config.transfer.total_buffer_size = parseFileSize(request.file_size);
+    config.storage.filepath = metadata.stringOption("filepath");
+    config.storage.filenames = metadata.stringOption("filenames");
+    config.storage.num_files = request.parallel_threads * metadata.intOption("num_files", 1);
+    config.storage.enable_direct = metadata.boolOption("enable_direct");
     if (config.backend.capabilities.requiresDirectStorage) {
         config.storage.enable_direct = true;
     }
@@ -483,7 +365,7 @@ g3ScenarioCommand::requestKeyValues() const {
 bool
 g3ScenarioCommand::isRequestValid(const g3ScenarioRequest &request) const {
     // validate file size
-    const size_t file_size = parseG3FileSize(request.file_size);
+    const size_t file_size = parseFileSize(request.file_size);
     if (file_size == 0) {
         return false;
     }
@@ -524,7 +406,7 @@ g3ScenarioCommand::run(southboundPluginBenchmarkCommand &plugin) {
     benchmarkConfig benchmark_config = makeG3BenchmarkConfig(request_, plugin);
     xferBenchNullRT runtime;
     xferBenchUtils::setRT(&runtime);
-    std::cout << "Single instance storage backend - no synchronization needed" << std::endl;
+    std::cout << "Single instance backend - no synchronization needed" << std::endl;
 
     nixlAgentConfig agent_config;
     agent_config.syncMode = benchmark_config.transfer.num_threads > 1 ?
@@ -557,7 +439,7 @@ g3ScenarioCommand::run(southboundPluginBenchmarkCommand &plugin) {
                                    benchmark_config.transfer.total_buffer_size,
                                    benchmark_config.storage.enable_direct,
                                    local_iovs,
-                                   &remote_iovs);
+                                   remote_iovs);
 
     auto descriptors = makeTransferDescriptorStrategy(benchmark_config,
                                                       request_.randomized_read_location);

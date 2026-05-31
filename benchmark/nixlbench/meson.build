@@ -221,7 +221,7 @@ if nvshmem_available
     nvcc_args += ['-lnixl', '-lnixl_build', '-lserdes', '-lcuda', '-lcudart', '-lnvshmem']
     nvcc_args += args
     nvcc_cmd_files = [
-                  meson.current_build_dir() + '/src/utils/libutils.a.p/utils.cpp.o',
+                 meson.current_build_dir() + '/src/utils/libutils.a.p/utils.cpp.o',
                  meson.current_build_dir() + '/src/runtime/libruntime.a.p/runtime.cpp.o',
                  meson.current_build_dir() + '/src/worker/libworker.a.p/worker.cpp.o',
                  meson.current_build_dir() + '/src/worker/nixl/libnixl_worker.a.p/nixl_worker.cpp.o',

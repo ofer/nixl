@@ -199,7 +199,7 @@ public:
                          std::size_t total_buffer_size,
                          bool align_for_direct_io,
                          localIovStrategy &local_strategy,
-                         remoteIovStrategy *remote_strategy = nullptr);
+                         remoteIovStrategy &remote_strategy);
 
     allocationResult
     allocate() override;
@@ -226,7 +226,7 @@ private:
     bool align_for_direct_io_;
     std::size_t page_size_;
     localIovStrategy &local_strategy_;
-    remoteIovStrategy *remote_strategy_;
+    remoteIovStrategy &remote_strategy_;
 };
 
 } // namespace nixlbench

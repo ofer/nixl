@@ -256,18 +256,6 @@ nixlXferDlistToIOVList(const nixl_xfer_dlist_t &dlist) {
     return iov_list;
 }
 
-// Convert vector of xferBenchIOV to nixl_xfer_dlist_t
-static void
-iovListToNixlXferDlist(const std::vector<xferBenchIOV> &iov_list, nixl_xfer_dlist_t &dlist) {
-    nixlBasicDesc desc;
-    for (const auto &iov : iov_list) {
-        desc.addr = iov.addr;
-        desc.len = iov.len;
-        desc.devId = iov.devId;
-        dlist.addDesc(desc);
-    }
-}
-
 static bool
 allocateXferMemory(const size_t page_size, size_t buffer_size, void **addr) {
     if (!addr) {

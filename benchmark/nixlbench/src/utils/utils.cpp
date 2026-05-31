@@ -17,7 +17,9 @@
 
 #include "benchmark_config.h"
 #include <algorithm>
+#include <charconv>
 #include <chrono>
+#include <cctype>
 #include <cstring>
 #include <numeric>
 #include <sstream>
@@ -38,6 +40,82 @@
 #include "runtime/etcd/etcd_rt.h"
 #include "utils/neuron.h"
 #include "utils/utils.h"
+
+void
+iovListToNixlXferDlist(const std::vector<xferBenchIOV> &iov_list, nixl_xfer_dlist_t &dlist) {
+    nixlBasicDesc desc;
+    for (const auto &iov : iov_list) {
+        desc.addr = iov.addr;
+        desc.len = iov.len;
+        desc.devId = iov.devId;
+        dlist.addDesc(desc);
+    }
+}
+
+size_t
+parseFileSize(const std::string &input) {
+    if (input.empty()) {
+        return 0;
+    }
+
+    size_t suffix_pos = input.find_first_not_of("0123456789");
+    const char *number_end = suffix_pos == std::string_view::npos ? input.data() + input.size() :
+                                                                    input.data() + suffix_pos;
+
+    size_t value = 0;
+    auto [ptr, ec] = std::from_chars(input.data(), number_end, value);
+    if (ec != std::errc{} || ptr != number_end) {
+        return 0;
+    }
+
+    if (suffix_pos == std::string_view::npos) {
+        return value;
+    }
+
+    std::string_view suffix(input.data() + suffix_pos, input.size() - suffix_pos);
+    auto to_upper = [](char c) {
+        return static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    };
+
+    size_t multiplier = 1;
+    switch (to_upper(suffix[0])) {
+    case 'K':
+        multiplier = 1000LL;
+        break;
+    case 'M':
+        multiplier = 1000000LL;
+        break;
+    case 'G':
+        multiplier = 1000000000LL;
+        break;
+    case 'T':
+        multiplier = 1000000000000LL;
+        break;
+    default:
+        return value;
+    }
+
+    if (suffix.size() >= 2 && to_upper(suffix[1]) == 'I') {
+        switch (to_upper(suffix[0])) {
+        case 'K':
+            multiplier = 1LL << 10;
+            break;
+        case 'M':
+            multiplier = 1LL << 20;
+            break;
+        case 'G':
+            multiplier = 1LL << 30;
+            break;
+        case 'T':
+            multiplier = 1LL << 40;
+            break;
+        default:
+            break;
+        }
+    }
+
+    return value * multiplier;
+}
 
 // Define command line parameters
 #define NB_ARG_STRING(param_name, def_val, help_text) DEFINE_string(param_name, def_val, help_text)
@@ -231,7 +309,7 @@ NB_ARG_STRING(gusli_device_security,
 #undef NB_ARG_STRING
 
 namespace {
-template <typename T>
+template<typename T>
 T
 getTomlValue(const toml::table *tbl, const char *name, const T &fallback) {
     if (tbl == nullptr) {
@@ -245,7 +323,7 @@ getTomlValue(const toml::table *tbl, const char *name, const T &fallback) {
     }
 }
 
-}
+} // namespace
 
 xferBenchConfig::xferBenchConfig()
     : runtime_type(XFERBENCH_RT_ETCD),
@@ -318,8 +396,10 @@ xferBenchConfig::parseConfig(int argc, char *argv[]) {
 
     if (argc > 1) {
         std::string_view first_arg(argv[1]);
-        if (first_arg == "scenario" || first_arg == "raw" || first_arg == "--help" || first_arg == "-h") {
-            std::cerr << "CLI11 subcommands must be executed through BenchmarkCliBuilder" << std::endl;
+        if (first_arg == "scenario" || first_arg == "raw" || first_arg == "--help" ||
+            first_arg == "-h") {
+            std::cerr << "CLI11 subcommands must be executed through BenchmarkCliBuilder"
+                      << std::endl;
             return -1;
         }
     }
@@ -369,15 +449,14 @@ xferBenchConfig::loadParams(void) {
 
     // NB_ARG() provides a parameter value, giving priority to explicitly passed
     // parameters over those specified in the config_file or set as defaults.
-#define NB_ARG(name)                                                                        \
-    ({                                                                                      \
-        auto retval = name;                                                                 \
-        retval = FLAGS_##name;                                                             \
-        if (tbl != nullptr &&                                                               \
-            gflags::GetCommandLineFlagInfoOrDie(#name).is_default) {                        \
-            retval = getTomlValue(tbl.get(), #name, retval);                                \
-        }                                                                                   \
-        retval;                                                                             \
+#define NB_ARG(name)                                                                   \
+    ({                                                                                 \
+        auto retval = name;                                                            \
+        retval = FLAGS_##name;                                                         \
+        if (tbl != nullptr && gflags::GetCommandLineFlagInfoOrDie(#name).is_default) { \
+            retval = getTomlValue(tbl.get(), #name, retval);                           \
+        }                                                                              \
+        retval;                                                                        \
     })
 
     benchmark_group = NB_ARG(benchmark_group);
@@ -754,11 +833,9 @@ xferBenchConfig::parseDeviceList() const {
             devices.push_back(dev);
         }
 
-        if ((int)devices.size() != num_initiator_dev ||
-            (int)devices.size() != num_target_dev) {
-            std::cerr << "Incorrect device list " << device_list
-                      << " provided for pairwise scheme " << devices.size() << "# devices"
-                      << std::endl;
+        if ((int)devices.size() != num_initiator_dev || (int)devices.size() != num_target_dev) {
+            std::cerr << "Incorrect device list " << device_list << " provided for pairwise scheme "
+                      << devices.size() << "# devices" << std::endl;
             return {};
         }
     } else {
@@ -947,8 +1024,7 @@ xferBenchUtils::checkConsistency(const xferBenchConfig &config,
 
             len = iov.len;
 
-            if (config.isStorageBackend() ||
-                config.backend == XFERBENCH_BACKEND_GPUNETIO) {
+            if (config.isStorageBackend() || config.backend == XFERBENCH_BACKEND_GPUNETIO) {
                 if (config.op_type == XFERBENCH_OP_READ) {
                     if (config.initiator_seg_type == XFERBENCH_SEG_TYPE_VRAM) {
                         if (posix_memalign(&addr, config.page_size, len) != 0) {
@@ -1004,7 +1080,9 @@ xferBenchUtils::checkConsistency(const xferBenchConfig &config,
                             exit(EXIT_FAILURE);
                         }
                         int oflags = O_RDONLY;
-                        if (config.storage_enable_direct) oflags |= O_DIRECT;
+                        if (config.storage_enable_direct) {
+                            oflags |= O_DIRECT;
+                        }
                         int fd = open(it->device_path.c_str(), oflags);
                         if (fd < 0) {
                             std::cerr << "Failed to open GUSLI device path: " << it->device_path
@@ -1189,7 +1267,6 @@ xferBenchUtils::printStatsHeader(const nixlbench::benchmarkConfig &config) {
     std::cout << std::string(separator_width, '-') << std::endl;
 }
 
-
 void
 xferBenchUtils::printStats(const nixlbench::benchmarkConfig &config,
                            bool is_target,
@@ -1207,7 +1284,8 @@ xferBenchUtils::printStats(const nixlbench::benchmarkConfig &config,
     }
 
     // Targets don't participate in reduction - they have no throughput to contribute
-    if (is_target && config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE && config.transfer.mode == XFERBENCH_MODE_SG && rt->getSize() > 2) {
+    if (is_target && config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE &&
+        config.transfer.mode == XFERBENCH_MODE_SG && rt->getSize() > 2) {
         return;
     }
 
@@ -1215,7 +1293,8 @@ xferBenchUtils::printStats(const nixlbench::benchmarkConfig &config,
 
     total_data_transferred = ((block_size * batch_size) * num_iter); // In Bytes
     avg_latency = (total_duration / (num_iter * batch_size)); // In microsec
-    if (config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE && config.transfer.mode == XFERBENCH_MODE_MG) {
+    if (config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE &&
+        config.transfer.mode == XFERBENCH_MODE_MG) {
         total_data_transferred *= config.worker.num_initiator_dev; // In Bytes
         avg_latency /= config.worker.num_initiator_dev; // In microsec
     }
@@ -1223,13 +1302,15 @@ xferBenchUtils::printStats(const nixlbench::benchmarkConfig &config,
     throughput_gb = (((double)total_data_transferred / (1000 * 1000 * 1000)) /
                      (total_duration / 1e6)); // In GB/Sec
 
-    if (config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE && config.transfer.mode == XFERBENCH_MODE_SG && rt->getSize() > 2) {
+    if (config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE &&
+        config.transfer.mode == XFERBENCH_MODE_SG && rt->getSize() > 2) {
         rt->reduceSumDouble(&throughput_gb, &totalbw, 0);
     } else {
         totalbw = throughput_gb;
     }
 
-    if (config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE && config.transfer.mode == XFERBENCH_MODE_SG && rt->getRank() != 0) {
+    if (config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE &&
+        config.transfer.mode == XFERBENCH_MODE_SG && rt->getRank() != 0) {
         return;
     }
 
@@ -1241,7 +1322,8 @@ xferBenchUtils::printStats(const nixlbench::benchmarkConfig &config,
     double transfer_p99_duration = stats.transfer_duration.p99();
 
     // Tabulate print with fixed width for each string
-    if (config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE && config.transfer.mode == XFERBENCH_MODE_SG && rt->getSize() > 2) {
+    if (config.transfer.scheme == XFERBENCH_SCHEME_PAIRWISE &&
+        config.transfer.mode == XFERBENCH_MODE_SG && rt->getSize() > 2) {
         // clang-format off
         std::cout << std::left << std::fixed << std::setprecision(6)
                   << std::setw(20) << block_size
@@ -1305,7 +1387,8 @@ xferBenchUtils::printStats(const xferBenchConfig &config,
 
     total_data_transferred = ((block_size * batch_size) * total_iter); // In Bytes
     avg_latency = (total_duration / (per_thread_iter * batch_size)); // In microsec
-    if (IS_PAIRWISE_AND_MG(config) || (IS_PAIRWISE_AND_SG(config) && config.num_initiator_dev > 1 && rt->getSize() == 1)) {
+    if (IS_PAIRWISE_AND_MG(config) ||
+        (IS_PAIRWISE_AND_SG(config) && config.num_initiator_dev > 1 && rt->getSize() == 1)) {
         total_data_transferred *= config.num_initiator_dev; // In Bytes
         avg_latency /= config.num_initiator_dev; // In microsec
     }
@@ -1446,8 +1529,7 @@ xferBenchUtils::putObjS3(const xferBenchConfig &config,
     }
     std::string aws_cmd = "aws s3 cp " + filename + " s3://" + bucket_name;
     if (!config.obj_endpoint_override.empty()) {
-        aws_cmd +=
-            " --checksum-algorithm SHA256 --endpoint-url " + config.obj_endpoint_override;
+        aws_cmd += " --checksum-algorithm SHA256 --endpoint-url " + config.obj_endpoint_override;
     }
 
     std::string full_cmd = buildAwsCredentials(config) + aws_cmd;
@@ -1646,25 +1728,33 @@ xferBenchUtils::buildCommonAzCliBlobParams(const xferBenchConfig &config,
 
 double
 xferMetricStats::min() const {
-    if (samples.empty()) return 0;
+    if (samples.empty()) {
+        return 0;
+    }
     return *std::min_element(samples.begin(), samples.end());
 }
 
 double
 xferMetricStats::max() const {
-    if (samples.empty()) return 0;
+    if (samples.empty()) {
+        return 0;
+    }
     return *std::max_element(samples.begin(), samples.end());
 }
 
 double
 xferMetricStats::avg() const {
-    if (samples.empty()) return 0;
+    if (samples.empty()) {
+        return 0;
+    }
     return std::accumulate(samples.begin(), samples.end(), 0.0) / samples.size();
 }
 
 double
 xferMetricStats::p90() {
-    if (samples.empty()) return 0;
+    if (samples.empty()) {
+        return 0;
+    }
     std::sort(samples.begin(), samples.end());
     size_t index = samples.size() * 0.9;
     return samples[std::min(index, samples.size() - 1)];
@@ -1672,7 +1762,9 @@ xferMetricStats::p90() {
 
 double
 xferMetricStats::p95() {
-    if (samples.empty()) return 0;
+    if (samples.empty()) {
+        return 0;
+    }
     std::sort(samples.begin(), samples.end());
     size_t index = samples.size() * 0.95;
     return samples[std::min(index, samples.size() - 1)];
@@ -1680,7 +1772,9 @@ xferMetricStats::p95() {
 
 double
 xferMetricStats::p99() {
-    if (samples.empty()) return 0;
+    if (samples.empty()) {
+        return 0;
+    }
     std::sort(samples.begin(), samples.end());
     size_t index = samples.size() * 0.99;
     return samples[std::min(index, samples.size() - 1)];

@@ -123,7 +123,7 @@ namespace {
 #undef RESOLVE_RAW_ARG
 
     const metadataPluginOptionValue *
-    findOption(const metadata_plugin_option_map_t &options, const std::string &name) {
+    findOption(const metadataPluginOptionMap &options, const std::string &name) {
         const auto iter = options.find(name);
         if (iter == options.end() || !iter->second.isProvided) {
             return nullptr;
@@ -141,7 +141,7 @@ namespace {
 
     void
     setStringOption(providedValue<std::string> &raw,
-                    const metadata_plugin_option_map_t &options,
+                    const metadataPluginOptionMap &options,
                     const char *name) {
         if (const auto *option = findOption(options, name)) {
             raw.setProvided(optionStringValue(*option));
@@ -150,7 +150,7 @@ namespace {
 
     void
     setBoolOption(providedValue<bool> &raw,
-                  const metadata_plugin_option_map_t &options,
+                  const metadataPluginOptionMap &options,
                   const char *name) {
         if (const auto *option = findOption(options, name)) {
             raw.setProvided(option->boolValue || option->value == "true");
@@ -159,7 +159,7 @@ namespace {
 
     void
     setIntOption(providedValue<int> &raw,
-                 const metadata_plugin_option_map_t &options,
+                 const metadataPluginOptionMap &options,
                  const char *name) {
         if (const auto *option = findOption(options, name)) {
             raw.setProvided(std::stoi(optionStringValue(*option)));
@@ -168,7 +168,7 @@ namespace {
 
     void
     setUint64Option(providedValue<uint64_t> &raw,
-                    const metadata_plugin_option_map_t &options,
+                    const metadataPluginOptionMap &options,
                     const char *name) {
         if (const auto *option = findOption(options, name)) {
             raw.setProvided(std::stoull(optionStringValue(*option)));
@@ -190,7 +190,7 @@ namespace {
         raw.backend.setProvided(std::string(plugin.name()));
         raw.backend_capabilities = plugin.capabilities();
         raw.backend_memory_types = supported_memory_types;
-        raw.backend_options = options;
+        raw.backend_options = metadataPluginOptionMap(options);
         const bool can_read_write_files =
             std::find(supported_memory_types.begin(), supported_memory_types.end(), FILE_SEG) !=
             supported_memory_types.end();

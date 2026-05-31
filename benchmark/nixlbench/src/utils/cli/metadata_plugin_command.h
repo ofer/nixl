@@ -29,7 +29,7 @@ public:
     const nixlBackendPluginCapabilities &
     capabilities() const override;
 
-    const metadata_plugin_option_map_t &
+    const metadataPluginOptionMap &
     metadataOptions() const override;
 
     const nixl_mem_list_t &
@@ -44,7 +44,7 @@ private:
     nixlBackendPluginCapabilities capabilities_;
     nixl_b_params_t optionSpecs_;
     nixl_mem_list_t supportedMemoryTypes_;
-    metadata_plugin_option_map_t optionValues_;
+    metadataPluginOptionMap optionValues_;
     std::vector<cliOption> options_;
 };
 

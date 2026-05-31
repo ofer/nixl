@@ -56,7 +56,7 @@ public:
     virtual const nixl_mem_list_t &
     supportedMemoryTypes() const = 0;
 
-    virtual const metadata_plugin_option_map_t &
+    virtual const metadataPluginOptionMap &
     metadataOptions() const = 0;
 
     virtual const nixlBackendPluginCapabilities &

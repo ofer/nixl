@@ -34,233 +34,233 @@ namespace {
 #define ROUND_UP(value, granularity) \
     ((((value) + (granularity) - 1) / (granularity)) * (granularity))
 
-bool
-allocateXferMemory(std::size_t page_size, std::size_t buffer_size, void **addr) {
-    if (!addr) {
-        std::cerr << "Invalid address" << std::endl;
-        return false;
-    }
-    if (buffer_size == 0) {
-        std::cerr << "Invalid buffer size" << std::endl;
-        return false;
-    }
-    if (page_size == 0) {
-        std::cerr << "Error: Invalid page size returned by sysconf" << std::endl;
-        return false;
-    }
-
-    int rc = posix_memalign(addr, page_size, buffer_size);
-    if (rc != 0 || !*addr) {
-        std::cerr << "Failed to allocate " << buffer_size
-                  << " bytes of page-aligned DRAM memory" << std::endl;
-        return false;
-    }
-    std::memset(*addr, 0, buffer_size);
-    return true;
-}
-
-std::size_t
-defaultPageSize() {
-    const long page_size = sysconf(_SC_PAGESIZE);
-    return page_size <= 0 ? 0 : static_cast<std::size_t>(page_size);
-}
-
-void
-iovListToNixlRegDlist(const std::vector<xferBenchIOV> &iov_list, nixl_reg_dlist_t &dlist) {
-    nixlBlobDesc desc;
-    for (const auto &iov : iov_list) {
-        desc.addr = iov.addr;
-        desc.len = iov.len;
-        desc.devId = iov.devId;
-        desc.metaInfo = iov.metaInfo;
-        dlist.addDesc(desc);
-    }
-}
-
-std::vector<std::string>
-splitCsv(const std::string &value) {
-    std::vector<std::string> result;
-    std::string element;
-    std::stringstream ss(value);
-    while (std::getline(ss, element, ',')) {
-        if (!element.empty()) {
-            result.push_back(element);
+    bool
+    allocateXferMemory(std::size_t page_size, std::size_t buffer_size, void **addr) {
+        if (!addr) {
+            std::cerr << "Invalid address" << std::endl;
+            return false;
         }
-    }
-    return result;
-}
+        if (buffer_size == 0) {
+            std::cerr << "Invalid buffer size" << std::endl;
+            return false;
+        }
+        if (page_size == 0) {
+            std::cerr << "Error: Invalid page size returned by sysconf" << std::endl;
+            return false;
+        }
 
-std::optional<fileRemoteIovStrategy::fileState>
-openFileWithFlags(const std::string &op_type, const std::string &file_name, int flags) {
-    std::uint64_t file_size = 0;
-    if (XFERBENCH_OP_READ == op_type) {
-        struct stat st;
-        if (::stat(file_name.c_str(), &st) == 0) {
-            file_size = static_cast<std::uint64_t>(st.st_size);
+        int rc = posix_memalign(addr, page_size, buffer_size);
+        if (rc != 0 || !*addr) {
+            std::cerr << "Failed to allocate " << buffer_size
+                      << " bytes of page-aligned DRAM memory" << std::endl;
+            return false;
+        }
+        std::memset(*addr, 0, buffer_size);
+        return true;
+    }
+
+    std::size_t
+    defaultPageSize() {
+        const long page_size = sysconf(_SC_PAGESIZE);
+        return page_size <= 0 ? 0 : static_cast<std::size_t>(page_size);
+    }
+
+    void
+    iovListToNixlRegDlist(const std::vector<xferBenchIOV> &iov_list, nixl_reg_dlist_t &dlist) {
+        nixlBlobDesc desc;
+        for (const auto &iov : iov_list) {
+            desc.addr = iov.addr;
+            desc.len = iov.len;
+            desc.devId = iov.devId;
+            desc.metaInfo = iov.metaInfo;
+            dlist.addDesc(desc);
         }
     }
 
-    int fd = open(file_name.c_str(), flags, 0744);
-    if (fd < 0) {
-        std::cerr << "Failed to open file: " << file_name << " with error: " << strerror(errno)
-                  << std::endl;
-        return std::nullopt;
+    std::vector<std::string>
+    splitCsv(const std::string &value) {
+        std::vector<std::string> result;
+        std::string element;
+        std::stringstream ss(value);
+        while (std::getline(ss, element, ',')) {
+            if (!element.empty()) {
+                result.push_back(element);
+            }
+        }
+        return result;
     }
 
-    return fileRemoteIovStrategy::fileState{fd, file_size, 0};
-}
+    std::optional<fileRemoteIovStrategy::fileState>
+    openFileWithFlags(const std::string &op_type, const std::string &file_name, int flags) {
+        std::uint64_t file_size = 0;
+        if (XFERBENCH_OP_READ == op_type) {
+            struct stat st;
+            if (::stat(file_name.c_str(), &st) == 0) {
+                file_size = static_cast<std::uint64_t>(st.st_size);
+            }
+        }
 
-std::optional<xferBenchIOV>
-createFileDesc(const std::string &op_type,
-               std::size_t page_size,
-               std::size_t buffer_size,
-               fileRemoteIovStrategy::fileState &file_state) {
-    const int fd = file_state.fd;
-    const std::uint64_t start_offset = file_state.offset;
-    const std::uint64_t end_offset = file_state.offset + buffer_size;
-    auto ret = std::optional<xferBenchIOV>(std::in_place, file_state.offset, buffer_size, fd);
-
-    file_state.offset = end_offset;
-
-    if (XFERBENCH_OP_READ == op_type && end_offset <= file_state.file_size) {
-        return ret;
-    }
-
-    void *buf = nullptr;
-    if (!allocateXferMemory(page_size, buffer_size, &buf)) {
-        std::cerr << "Failed to allocate " << buffer_size << " bytes of memory" << std::endl;
-        return std::nullopt;
-    }
-
-    std::memset(buf, XFERBENCH_TARGET_BUFFER_ELEMENT, buffer_size);
-
-    std::size_t remaining = buffer_size;
-    std::size_t offset = start_offset;
-    char *write_ptr = static_cast<char *>(buf);
-    while (remaining > 0) {
-        ssize_t rc = pwrite(fd, write_ptr, remaining, offset);
-        if (rc < 0) {
-            std::cerr << "Failed to write to file: " << fd << " with error: " << strerror(errno)
+        int fd = open(file_name.c_str(), flags, 0744);
+        if (fd < 0) {
+            std::cerr << "Failed to open file: " << file_name << " with error: " << strerror(errno)
                       << std::endl;
-            free(buf);
             return std::nullopt;
         }
 
-        remaining -= static_cast<std::size_t>(rc);
-        offset += static_cast<std::size_t>(rc);
-        write_ptr += rc;
+        return fileRemoteIovStrategy::fileState{fd, file_size, 0};
     }
 
-    free(buf);
+    std::optional<xferBenchIOV>
+    createFileDesc(const std::string &op_type,
+                   std::size_t page_size,
+                   std::size_t buffer_size,
+                   fileRemoteIovStrategy::fileState &file_state) {
+        const int fd = file_state.fd;
+        const std::uint64_t start_offset = file_state.offset;
+        const std::uint64_t end_offset = file_state.offset + buffer_size;
+        auto ret = std::optional<xferBenchIOV>(std::in_place, file_state.offset, buffer_size, fd);
 
-    if (end_offset > file_state.file_size) {
-        file_state.file_size = end_offset;
+        file_state.offset = end_offset;
+
+        if (XFERBENCH_OP_READ == op_type && end_offset <= file_state.file_size) {
+            return ret;
+        }
+
+        void *buf = nullptr;
+        if (!allocateXferMemory(page_size, buffer_size, &buf)) {
+            std::cerr << "Failed to allocate " << buffer_size << " bytes of memory" << std::endl;
+            return std::nullopt;
+        }
+
+        std::memset(buf, XFERBENCH_TARGET_BUFFER_ELEMENT, buffer_size);
+
+        std::size_t remaining = buffer_size;
+        std::size_t offset = start_offset;
+        char *write_ptr = static_cast<char *>(buf);
+        while (remaining > 0) {
+            ssize_t rc = pwrite(fd, write_ptr, remaining, offset);
+            if (rc < 0) {
+                std::cerr << "Failed to write to file: " << fd << " with error: " << strerror(errno)
+                          << std::endl;
+                free(buf);
+                return std::nullopt;
+            }
+
+            remaining -= static_cast<std::size_t>(rc);
+            offset += static_cast<std::size_t>(rc);
+            write_ptr += rc;
+        }
+
+        free(buf);
+
+        if (end_offset > file_state.file_size) {
+            file_state.file_size = end_offset;
+        }
+
+        return ret;
     }
 
-    return ret;
-}
-
-std::uint64_t
-timestampMicros() {
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    return static_cast<std::uint64_t>(tv.tv_sec) * 1000000ULL + tv.tv_usec;
-}
+    std::uint64_t
+    timestampMicros() {
+        struct timeval tv;
+        gettimeofday(&tv, nullptr);
+        return static_cast<std::uint64_t>(tv.tv_sec) * 1000000ULL + tv.tv_usec;
+    }
 
 #if HAVE_CUDA
-std::optional<xferBenchIOV>
-getVramDescCuda(int devid, std::size_t buffer_size, uint8_t memset_value) {
-    void *addr = nullptr;
-    cudaError_t alloc_result = cudaMalloc(&addr, buffer_size);
-    if (alloc_result != cudaSuccess) {
-        std::cerr << "Failed to allocate CUDA buffer: " << cudaGetErrorString(alloc_result)
-                  << std::endl;
-        return std::nullopt;
-    }
-    cudaError_t memset_result = cudaMemset(addr, memset_value, buffer_size);
-    if (memset_result != cudaSuccess) {
-        std::cerr << "Failed to set device memory: " << cudaGetErrorString(memset_result)
-                  << std::endl;
-        cudaFree(addr);
-        return std::nullopt;
+    std::optional<xferBenchIOV>
+    getVramDescCuda(int devid, std::size_t buffer_size, uint8_t memset_value) {
+        void *addr = nullptr;
+        cudaError_t alloc_result = cudaMalloc(&addr, buffer_size);
+        if (alloc_result != cudaSuccess) {
+            std::cerr << "Failed to allocate CUDA buffer: " << cudaGetErrorString(alloc_result)
+                      << std::endl;
+            return std::nullopt;
+        }
+        cudaError_t memset_result = cudaMemset(addr, memset_value, buffer_size);
+        if (memset_result != cudaSuccess) {
+            std::cerr << "Failed to set device memory: " << cudaGetErrorString(memset_result)
+                      << std::endl;
+            cudaFree(addr);
+            return std::nullopt;
+        }
+
+        return std::optional<xferBenchIOV>(std::in_place, (uintptr_t)addr, buffer_size, devid);
     }
 
-    return std::optional<xferBenchIOV>(std::in_place, (uintptr_t)addr, buffer_size, devid);
-}
-
-std::optional<xferBenchIOV>
-getVramDescCudaVmm(int devid, std::size_t buffer_size, uint8_t memset_value) {
+    std::optional<xferBenchIOV>
+    getVramDescCudaVmm(int devid, std::size_t buffer_size, uint8_t memset_value) {
 #if HAVE_CUDA_FABRIC
-    CUdeviceptr addr = 0;
-    CUmemAllocationProp prop = {};
-    CUmemAccessDesc access = {};
+        CUdeviceptr addr = 0;
+        CUmemAllocationProp prop = {};
+        CUmemAccessDesc access = {};
 
-    prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
-    prop.requestedHandleTypes = CU_MEM_HANDLE_TYPE_FABRIC;
-    prop.allocFlags.gpuDirectRDMACapable = 1;
-    prop.location.id = devid;
-    prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+        prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
+        prop.requestedHandleTypes = CU_MEM_HANDLE_TYPE_FABRIC;
+        prop.allocFlags.gpuDirectRDMACapable = 1;
+        prop.location.id = devid;
+        prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
 
-    std::size_t granularity = 0;
-    if (cuMemGetAllocationGranularity(&granularity, &prop, CU_MEM_ALLOC_GRANULARITY_MINIMUM) !=
-        CUDA_SUCCESS) {
-        std::cerr << "Failed to get VMM allocation granularity" << std::endl;
-        return std::nullopt;
-    }
+        std::size_t granularity = 0;
+        if (cuMemGetAllocationGranularity(&granularity, &prop, CU_MEM_ALLOC_GRANULARITY_MINIMUM) !=
+            CUDA_SUCCESS) {
+            std::cerr << "Failed to get VMM allocation granularity" << std::endl;
+            return std::nullopt;
+        }
 
-    std::size_t padded_size = ROUND_UP(buffer_size, granularity);
-    CUmemGenericAllocationHandle handle;
-    if (cuMemCreate(&handle, padded_size, &prop, 0) != CUDA_SUCCESS) {
-        std::cerr << "Failed to create VMM allocation" << std::endl;
-        return std::nullopt;
-    }
-    if (cuMemAddressReserve(&addr, padded_size, granularity, 0, 0) != CUDA_SUCCESS) {
-        std::cerr << "Failed to reserve VMM address" << std::endl;
-        cuMemRelease(handle);
-        return std::nullopt;
-    }
-    if (cuMemMap(addr, padded_size, 0, handle, 0) != CUDA_SUCCESS) {
-        std::cerr << "Failed to map VMM allocation" << std::endl;
-        cuMemAddressFree(addr, padded_size);
-        cuMemRelease(handle);
-        return std::nullopt;
-    }
+        std::size_t padded_size = ROUND_UP(buffer_size, granularity);
+        CUmemGenericAllocationHandle handle;
+        if (cuMemCreate(&handle, padded_size, &prop, 0) != CUDA_SUCCESS) {
+            std::cerr << "Failed to create VMM allocation" << std::endl;
+            return std::nullopt;
+        }
+        if (cuMemAddressReserve(&addr, padded_size, granularity, 0, 0) != CUDA_SUCCESS) {
+            std::cerr << "Failed to reserve VMM address" << std::endl;
+            cuMemRelease(handle);
+            return std::nullopt;
+        }
+        if (cuMemMap(addr, padded_size, 0, handle, 0) != CUDA_SUCCESS) {
+            std::cerr << "Failed to map VMM allocation" << std::endl;
+            cuMemAddressFree(addr, padded_size);
+            cuMemRelease(handle);
+            return std::nullopt;
+        }
 
-    access.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-    access.location.id = devid;
-    access.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
-    if (cuMemSetAccess(addr, buffer_size, &access, 1) != CUDA_SUCCESS ||
-        cuMemsetD8(addr, memset_value, buffer_size) != CUDA_SUCCESS) {
-        std::cerr << "Failed to initialize VMM allocation" << std::endl;
-        cuMemUnmap(addr, padded_size);
-        cuMemAddressFree(addr, padded_size);
-        cuMemRelease(handle);
-        return std::nullopt;
-    }
+        access.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+        access.location.id = devid;
+        access.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+        if (cuMemSetAccess(addr, buffer_size, &access, 1) != CUDA_SUCCESS ||
+            cuMemsetD8(addr, memset_value, buffer_size) != CUDA_SUCCESS) {
+            std::cerr << "Failed to initialize VMM allocation" << std::endl;
+            cuMemUnmap(addr, padded_size);
+            cuMemAddressFree(addr, padded_size);
+            cuMemRelease(handle);
+            return std::nullopt;
+        }
 
-    return std::optional<xferBenchIOV>(
-        std::in_place, (uintptr_t)addr, buffer_size, devid, padded_size, handle);
+        return std::optional<xferBenchIOV>(
+            std::in_place, (uintptr_t)addr, buffer_size, devid, padded_size, handle);
 #else
-    std::cerr << "CUDA_FABRIC is not supported" << std::endl;
-    return std::nullopt;
+        std::cerr << "CUDA_FABRIC is not supported" << std::endl;
+        return std::nullopt;
 #endif
-}
-
-std::optional<xferBenchIOV>
-getVramDescNeuron(int devid, std::size_t buffer_size, uint8_t memset_value) {
-    void *addr = nullptr;
-    if (neuronMalloc(&addr, buffer_size, devid) != 0) {
-        std::cerr << "Failed to allocate Neuron tensor" << std::endl;
-        return std::nullopt;
-    }
-    if (neuronMemset(addr, memset_value, buffer_size) != 0) {
-        std::cerr << "Failed to set Neuron tensor memory" << std::endl;
-        neuronFree(addr);
-        return std::nullopt;
     }
 
-    return std::optional<xferBenchIOV>(std::in_place, (uintptr_t)addr, buffer_size, devid);
-}
+    std::optional<xferBenchIOV>
+    getVramDescNeuron(int devid, std::size_t buffer_size, uint8_t memset_value) {
+        void *addr = nullptr;
+        if (neuronMalloc(&addr, buffer_size, devid) != 0) {
+            std::cerr << "Failed to allocate Neuron tensor" << std::endl;
+            return std::nullopt;
+        }
+        if (neuronMemset(addr, memset_value, buffer_size) != 0) {
+            std::cerr << "Failed to set Neuron tensor memory" << std::endl;
+            neuronFree(addr);
+            return std::nullopt;
+        }
+
+        return std::optional<xferBenchIOV>(std::in_place, (uintptr_t)addr, buffer_size, devid);
+    }
 #endif
 
 } // namespace
@@ -304,8 +304,7 @@ dramLocalIovStrategy::segmentType() const {
     return DRAM_SEG;
 }
 
-vramLocalIovStrategy::vramLocalIovStrategy(bool enable_vmm)
-    : enable_vmm_(enable_vmm) {}
+vramLocalIovStrategy::vramLocalIovStrategy(bool enable_vmm) : enable_vmm_(enable_vmm) {}
 
 std::variant<std::vector<std::vector<xferBenchIOV>>, int>
 vramLocalIovStrategy::create(int num_threads, std::size_t buffer_size) {
@@ -321,8 +320,8 @@ vramLocalIovStrategy::create(int num_threads, std::size_t buffer_size) {
         if (neuronCoreCount() == 0) {
             cudaError_t set_device_result = cudaSetDevice(list_idx);
             if (set_device_result != cudaSuccess) {
-                std::cerr << "Failed to set CUDA device: "
-                          << cudaGetErrorString(set_device_result) << std::endl;
+                std::cerr << "Failed to set CUDA device: " << cudaGetErrorString(set_device_result)
+                          << std::endl;
                 cleanup(iov_lists);
                 return EXIT_FAILURE;
             }
@@ -391,7 +390,9 @@ makeLocalIovStrategy(const std::string &segment_type, std::size_t page_size, boo
     return nullptr;
 }
 
-fileRemoteIovStrategy::fileRemoteIovStrategy(storageConfig storage_config, std::string backend_name, std::string op_type) {
+fileRemoteIovStrategy::fileRemoteIovStrategy(storageConfig storage_config,
+                                             std::string backend_name,
+                                             std::string op_type) {
     config_.backend_name = backend_name;
     config_.op_type = op_type;
     config_.filepath = storage_config.filepath;
@@ -423,9 +424,8 @@ fileRemoteIovStrategy::openFiles() {
     }
 
     if (filenames.empty()) {
-        const std::string file_path = config_.filepath.empty() ?
-            std::filesystem::current_path().string() :
-            config_.filepath;
+        const std::string file_path =
+            config_.filepath.empty() ? std::filesystem::current_path().string() : config_.filepath;
         const std::string file_name_prefix = "/nixlbench_test_file_";
         for (int i = 0; i < config_.num_files; ++i) {
             filenames.push_back(file_path + file_name_prefix + config_.backend_name + "_" +
@@ -458,27 +458,27 @@ fileRemoteIovStrategy::create(int num_threads, std::size_t buffer_size) {
     auto fds_result = openFiles();
     // an int result is an error code, return the failure
     if (std::holds_alternative<int>(fds_result)) {
+        std::cerr << "Failed to open files" << std::endl;
         return std::get<int>(fds_result);
     }
+
     files_ = std::move(std::get<std::vector<fileState>>(fds_result));
 
-    std::vector<std::vector<xferBenchIOV>> remote_iovs;
-    remote_iovs.reserve(static_cast<std::size_t>(num_threads));
+    std::vector<std::vector<xferBenchIOV>> iovs;
+    iovs.reserve(static_cast<std::size_t>(num_threads));
     std::size_t file_idx = 0;
     for (int list_idx = 0; list_idx < num_threads; ++list_idx) {
-        auto basic_desc = createFileDesc(config_.op_type,
-                                         config_.page_size,
-                                         buffer_size,
-                                         files_[file_idx]);
+        auto basic_desc =
+            createFileDesc(config_.op_type, config_.page_size, buffer_size, files_[file_idx]);
         if (!basic_desc) {
-            cleanup(remote_iovs);
+            cleanup(iovs);
             return EXIT_FAILURE;
         }
-        remote_iovs.push_back({basic_desc.value()});
+        iovs.push_back({basic_desc.value()});
         file_idx = (file_idx + 1) % files_.size();
     }
 
-    return remote_iovs;
+    return iovs;
 }
 
 std::variant<std::vector<std::vector<xferBenchIOV>>, int>
@@ -494,12 +494,10 @@ fileRemoteIovStrategy::createTransferIovs(const std::vector<std::vector<xferBenc
     for (const auto &iov_list : local_iovs) {
         std::vector<xferBenchIOV> remote_iov_list;
         remote_iov_list.reserve(iov_list.size());
-        const auto min_iov = std::min_element(iov_list.begin(),
-                                              iov_list.end(),
-                                              [](const xferBenchIOV &lhs,
-                                                 const xferBenchIOV &rhs) {
-                                                  return lhs.addr < rhs.addr;
-                                              });
+        const auto min_iov = std::min_element(
+            iov_list.begin(), iov_list.end(), [](const xferBenchIOV &lhs, const xferBenchIOV &rhs) {
+                return lhs.addr < rhs.addr;
+            });
         const uintptr_t base_addr = min_iov == iov_list.end() ? 0 : min_iov->addr;
         const std::size_t fd_idx = list_idx % files_.size();
         for (const auto &iov : iov_list) {
@@ -560,8 +558,9 @@ objectRemoteIovStrategy::create(int num_threads, std::size_t buffer_size) {
 }
 
 std::variant<std::vector<std::vector<xferBenchIOV>>, int>
-objectRemoteIovStrategy::createTransferIovs(const std::vector<std::vector<xferBenchIOV>> &local_iovs,
-                                            std::size_t block_size) const {
+objectRemoteIovStrategy::createTransferIovs(
+    const std::vector<std::vector<xferBenchIOV>> &local_iovs,
+    std::size_t block_size) const {
     std::vector<std::vector<xferBenchIOV>> remote_iovs;
     remote_iovs.reserve(local_iovs.size());
     for (const auto &iov_list : local_iovs) {
@@ -641,7 +640,7 @@ nixlStorageAllocator::nixlStorageAllocator(nixlAgent &agent,
                                            std::size_t total_buffer_size,
                                            bool align_for_direct_io,
                                            localIovStrategy &local_strategy,
-                                           remoteIovStrategy *remote_strategy)
+                                           remoteIovStrategy &remote_strategy)
     : agent_(agent),
       backend_(backend),
       num_threads_(num_threads),
@@ -660,29 +659,25 @@ nixlStorageAllocator::allocate() {
     benchmarkAllocation allocation;
     const std::size_t buffer_size = perThreadBufferSize();
 
-    if (remote_strategy_ != nullptr) {
-        auto remote_result = remote_strategy_->create(num_threads_, buffer_size);
-        if (std::holds_alternative<int>(remote_result)) {
-            return std::get<int>(remote_result);
-        }
-        allocation.remote_iovs = std::move(std::get<std::vector<std::vector<xferBenchIOV>>>(
-            remote_result));
-        if (!registerIovLists(allocation.remote_iovs, remote_strategy_->segmentType())) {
-            remote_strategy_->cleanup(allocation.remote_iovs);
-            return EXIT_FAILURE;
-        }
+    auto remote_result = remote_strategy_.create(num_threads_, buffer_size);
+    if (std::holds_alternative<int>(remote_result)) {
+        return std::get<int>(remote_result);
+    }
+    allocation.remote_iovs =
+        std::move(std::get<std::vector<std::vector<xferBenchIOV>>>(remote_result));
+    if (!registerIovLists(allocation.remote_iovs, remote_strategy_.segmentType())) {
+        remote_strategy_.cleanup(allocation.remote_iovs);
+        return EXIT_FAILURE;
     }
 
     auto local_result = local_strategy_.create(num_threads_, buffer_size);
     if (std::holds_alternative<int>(local_result)) {
-        if (remote_strategy_ != nullptr) {
-            deregisterIovLists(allocation.remote_iovs, remote_strategy_->segmentType());
-            remote_strategy_->cleanup(allocation.remote_iovs);
-        }
+        deregisterIovLists(allocation.remote_iovs, remote_strategy_.segmentType());
+        remote_strategy_.cleanup(allocation.remote_iovs);
         return std::get<int>(local_result);
     }
-    allocation.local_iovs = std::move(std::get<std::vector<std::vector<xferBenchIOV>>>(
-        local_result));
+    allocation.local_iovs =
+        std::move(std::get<std::vector<std::vector<xferBenchIOV>>>(local_result));
 
     if (!allocation.remote_iovs.empty()) {
         for (std::size_t i = 0; i < allocation.local_iovs.size(); ++i) {
@@ -694,10 +689,8 @@ nixlStorageAllocator::allocate() {
 
     if (!registerIovLists(allocation.local_iovs, local_strategy_.segmentType())) {
         local_strategy_.cleanup(allocation.local_iovs);
-        if (remote_strategy_ != nullptr) {
-            deregisterIovLists(allocation.remote_iovs, remote_strategy_->segmentType());
-            remote_strategy_->cleanup(allocation.remote_iovs);
-        }
+        deregisterIovLists(allocation.remote_iovs, remote_strategy_.segmentType());
+        remote_strategy_.cleanup(allocation.remote_iovs);
         return EXIT_FAILURE;
     }
 
@@ -709,10 +702,8 @@ nixlStorageAllocator::deallocate(benchmarkAllocation &allocation) {
     deregisterIovLists(allocation.local_iovs, local_strategy_.segmentType());
     local_strategy_.cleanup(allocation.local_iovs);
 
-    if (remote_strategy_ != nullptr) {
-        deregisterIovLists(allocation.remote_iovs, remote_strategy_->segmentType());
-        remote_strategy_->cleanup(allocation.remote_iovs);
-    }
+    deregisterIovLists(allocation.remote_iovs, remote_strategy_.segmentType());
+    remote_strategy_.cleanup(allocation.remote_iovs);
 }
 
 bool
@@ -754,8 +745,7 @@ nixlStorageAllocator::deregisterIovLists(const std::vector<std::vector<xferBench
         iovListToNixlRegDlist(iov_list, desc_list);
         nixl_status_t status = agent_.deregisterMem(desc_list, &opt_args);
         if (status != NIXL_SUCCESS) {
-            std::cerr << "NIXL: deregisterMem failed (Error code: " << status << ")"
-                      << std::endl;
+            std::cerr << "NIXL: deregisterMem failed (Error code: " << status << ")" << std::endl;
         }
     }
 }

@@ -139,7 +139,7 @@ applyBenchmarkOverrides(const benchmarkConfig &config,
 } // namespace
 
 nixl_b_params_t
-applyPluginOptions(const metadata_plugin_option_map_t &options, nixl_b_params_t &backend_params) {
+applyPluginOptions(const metadataPluginOptionMap &options, nixl_b_params_t &backend_params) {
     for (const auto &[name, option] : options) {
         if (option.isProvided && !isFileWorkloadOption(name)) {
             backend_params[name] = optionStringValue(option);

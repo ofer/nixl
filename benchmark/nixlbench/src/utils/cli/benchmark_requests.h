@@ -18,18 +18,31 @@ namespace nixlbench {
 
 using request_key_value_pairs_t = std::vector<std::pair<std::string, std::string>>;
 
-template <typename T>
-struct providedValue {
+template<typename T> struct providedValue {
     T value{};
     bool isProvided = false;
 
     providedValue() = default;
+
     explicit providedValue(const T &default_value) : value(default_value) {}
 
-    T *valuePtr() { return &value; }
-    bool *providedPtr() { return &isProvided; }
-    bool wasProvided() const { return isProvided; }
-    void setProvided(const T &new_value) {
+    T *
+    valuePtr() {
+        return &value;
+    }
+
+    bool *
+    providedPtr() {
+        return &isProvided;
+    }
+
+    bool
+    wasProvided() const {
+        return isProvided;
+    }
+
+    void
+    setProvided(const T &new_value) {
         value = new_value;
         isProvided = true;
     }
@@ -42,18 +55,6 @@ enum class scenario_type_t {
     G4,
 };
 
-// enum class plugin_type_t {
-//     NONE,
-//     POSIX,
-//     OBJ,
-//     GDS,
-//     GDS_MT,
-//     GPUNETIO,
-//     AZURE_BLOB,
-//     HF3FS,
-//     GUSLI,
-// };
-
 struct metadataPluginOptionValue {
     std::string value;
     bool boolValue = false;
@@ -61,7 +62,46 @@ struct metadataPluginOptionValue {
     bool isFlag = false;
 };
 
-using metadata_plugin_option_map_t = std::unordered_map<std::string, metadataPluginOptionValue>;
+class metadataPluginOptionMap : public std::unordered_map<std::string, metadataPluginOptionValue> {
+public:
+    metadataPluginOptionMap()= default;
+
+    const metadataPluginOptionValue *
+    findOption(const std::string &name) const {
+        const auto iter = this->find(name);
+        return iter == this->end() ? nullptr : &iter->second;
+    }
+
+    std::string
+    stringOption(const std::string &name, const std::string &default_value = "") const {
+        const auto *option = findOption(name);
+        return option == nullptr ? default_value : option->value;
+    }
+
+    bool
+    boolOption(const std::string &name, bool default_value = false) const {
+        const auto *option = findOption(name);
+        if (option == nullptr) {
+            return default_value;
+        }
+        return option->boolValue || option->value == "true" || option->value == "1";
+    }
+
+    int
+    intOption(const std::string &name, int default_value = 1) const {
+        const auto *option = findOption(name);
+        if (option == nullptr || option->value.empty()) {
+            return default_value;
+        }
+
+        try {
+            return std::stoi(option->value);
+        }
+        catch (const std::exception &) {
+            return default_value;
+        }
+    }
+};
 
 struct fileWorkloadRequest {
     providedValue<std::string> filepath;
@@ -90,17 +130,24 @@ struct g3ScenarioRequest {
 };
 
 struct g4ScenarioRequest {
-    std::string file_size;
-    int num_kvs = 0;
+    std::string file_size = "5MB";
+    int num_files = 100;
+    uint64_t block_size_bytes = 0;
     int parallel_threads = 1;
-    std::string batch_size;
+    std::string action_mode = "read";
+    bool randomized_read_location = true;
+    uint64_t batch_size = 1;
+    std::string open_behavior = "open-close";
 
     request_key_value_pairs_t
     toKeyValuePairs() const {
         return {{"file_size", file_size},
-                {"num_kvs", std::to_string(num_kvs)},
+                {"num_files", std::to_string(num_files)},
                 {"parallel_threads", std::to_string(parallel_threads)},
-                {"batch_size", batch_size}};
+                {"block_size_bytes", std::to_string(block_size_bytes)},
+                {"batch_size", std::to_string(batch_size)},
+                {"action_mode", action_mode},
+                {"randomized_read_location", randomized_read_location ? "true" : "false"}};
     }
 };
 
@@ -169,7 +216,7 @@ struct rawRequest {
     providedValue<std::string> gusli_device_security;
     nixlBackendPluginCapabilities backend_capabilities{};
     nixl_mem_list_t backend_memory_types;
-    metadata_plugin_option_map_t backend_options;
+    metadataPluginOptionMap backend_options;
 
     request_key_value_pairs_t
     toKeyValuePairs() const {
@@ -219,8 +266,7 @@ struct rawRequest {
                 {"obj_bucket_name", obj_bucket_name.value},
                 {"obj_scheme", obj_scheme.value},
                 {"obj_region", obj_region.value},
-                {"obj_use_virtual_addressing",
-                 obj_use_virtual_addressing.value ? "true" : "false"},
+                {"obj_use_virtual_addressing", obj_use_virtual_addressing.value ? "true" : "false"},
                 {"obj_endpoint_override", obj_endpoint_override.value},
                 {"obj_req_checksum", obj_req_checksum.value},
                 {"obj_ca_bundle", obj_ca_bundle.value},

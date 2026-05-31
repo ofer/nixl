@@ -14,19 +14,30 @@ class g4ScenarioCommand : public benchmarkScenario {
 public:
     g4ScenarioCommand();
 
-    std::string_view name() const override;
-    std::string_view description() const override;
-    const std::vector<cliOption> &getOptions() const override;
-    scenario_type_t scenarioType() const override;
-    bool supportsPlugin(nixl_mem_list_t supportedMemoryTypes,
-                        nixlBackendPluginCapabilities pluginCapabilities) const override;
-    request_key_value_pairs_t requestKeyValues() const override;
-    int run(southboundPluginBenchmarkCommand &plugin) override;
-    const g4ScenarioRequest &request() const;
+    std::string_view
+    name() const override;
+    std::string_view
+    description() const override;
+    const std::vector<cliOption> &
+    getOptions() const override;
+    scenario_type_t
+    scenarioType() const override;
+    bool
+    supportsPlugin(nixl_mem_list_t supportedMemoryTypes,
+                   nixlBackendPluginCapabilities pluginCapabilities) const override;
+    request_key_value_pairs_t
+    requestKeyValues() const override;
+    int
+    run(southboundPluginBenchmarkCommand &plugin) override;
+    const g4ScenarioRequest &
+    request() const;
 
 private:
     g4ScenarioRequest request_;
     std::vector<cliOption> options_;
+
+    bool
+    isRequestValid(const g4ScenarioRequest &request) const;
 };
 
 } // namespace nixlbench

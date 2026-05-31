@@ -30,6 +30,7 @@
 #include <optional>
 #include <toml++/toml.hpp>
 #include <utils/common/nixl_time.h>
+#include "nixl_descriptors.h"
 #include "runtime/runtime.h"
 
 #if HAVE_CUDA
@@ -400,5 +401,12 @@ public:
                size_t batch_size,
                xferBenchStats stats);
 };
+
+void
+iovListToNixlXferDlist(const std::vector<xferBenchIOV> &iov_list, nixl_xfer_dlist_t &dlist);
+
+size_t
+parseFileSize(const std::string &input);
+
 
 #endif
