@@ -283,7 +283,7 @@ makeG3BenchmarkConfig(const g3ScenarioRequest &request,
     config.transfer.total_buffer_size = parseFileSize(request.file_size);
     config.storage.filepath = metadata.stringOption("filepath");
     config.storage.filenames = metadata.stringOption("filenames");
-    config.storage.num_files = request.parallel_threads * metadata.intOption("num_files", 1);
+    config.storage.num_files = metadata.intOption("num_files", 1);
     config.storage.enable_direct = metadata.boolOption("enable_direct");
     return config;
 }
@@ -326,8 +326,8 @@ g3ScenarioCommand::name() const {
 
 std::string_view
 g3ScenarioCommand::description() const {
-    return "Run G3 storage scenario.  The G3 storage scenario reads or writes to a large per "
-           "thread file in batches.  The file is opened once and closed at the end of the "
+    return "Run G3 storage scenario.  The G3 storage scenario reads or writes to a large  "
+           "file in batches.  The file is opened once and closed at the end of the "
            "benchmark.  It only supports plugins that can read and write to files.";
 }
 
