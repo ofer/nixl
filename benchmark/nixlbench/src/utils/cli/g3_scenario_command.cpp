@@ -34,259 +34,271 @@
 namespace nixlbench {
 namespace {
 
-std::atomic<int> g3_terminate{0};
-
-void
-g3SignalHandler(int signal) {
-    (void)signal;
-    static const char msg[] = "Ctrl-C received, exiting...\n";
-    constexpr int stdout_fd = 1;
-    constexpr int max_count = 1;
-    auto size = write(stdout_fd, msg, sizeof(msg) - 1);
-    (void)size;
-
-    if (++g3_terminate > max_count) {
-        std::_Exit(EXIT_FAILURE);
-    }
-}
-
-bool
-g3Signaled() {
-    return g3_terminate.load() != 0;
-}
-
-nixl_status_t
-executeSingleTransfer(nixlAgent &agent,
-                      nixlXferReqH *req,
-                      xferBenchTimer &timer,
-                      xferBenchStats &thread_stats) {
-    nixl_status_t rc = agent.postXferReq(req);
-    thread_stats.post_duration.add(timer.lap());
-    while (!g3Signaled() && NIXL_IN_PROG == rc) {
-        rc = agent.getXferStatus(req);
-    }
-    return g3Signaled() ? NIXL_ERR_UNKNOWN : rc;
-}
-
-int
-executeTransferIterations(nixlAgent &agent,
-                          const nixl_xfer_op_t op,
-                          nixl_xfer_dlist_t &local_desc,
-                          nixl_xfer_dlist_t &remote_desc,
-                          const std::string &target,
-                          nixl_opt_args_t &params,
-                          int num_iter,
-                          xferBenchTimer &timer,
-                          xferBenchStats &thread_stats) {
-    if (num_iter <= 0) {
-        return 0;
-    }
-
-    nixlXferReqH *req = nullptr;
-    nixl_status_t create_rc = agent.createXferReq(op, local_desc, remote_desc, target, req, &params);
-    if (NIXL_SUCCESS != create_rc) {
-        std::cerr << "createXferReq failed: " << nixlEnumStrings::statusStr(create_rc) << std::endl;
-        return EXIT_FAILURE;
-    }
-    thread_stats.prepare_duration.add(timer.lap());
-
-    for (int i = 0; i < num_iter; ++i) {
-        if (g3Signaled()) {
-            agent.releaseXferReq(req);
-            return EXIT_FAILURE;
-        }
-
-        nixl_status_t rc = executeSingleTransfer(agent, req, timer, thread_stats);
-        if (rc != NIXL_SUCCESS) {
-            std::cout << "NIXL Xfer failed with status: " << nixlEnumStrings::statusStr(rc)
-                      << std::endl;
-            agent.releaseXferReq(req);
-            return EXIT_FAILURE;
-        }
-        thread_stats.transfer_duration.add(timer.lap());
-    }
-
-    if (agent.releaseXferReq(req) != NIXL_SUCCESS) {
-        std::cout << "NIXL releaseXferReq failed" << std::endl;
-        return EXIT_FAILURE;
-    }
-
-    return EXIT_SUCCESS;
-}
-
-int
-executeTransfer(nixlAgent &agent,
-                nixl_mem_t local_segment_type,
-                nixl_mem_t remote_segment_type,
-                const std::vector<std::vector<xferBenchIOV>> &local_iovs,
-                const std::vector<std::vector<xferBenchIOV>> &remote_iovs,
-                nixl_xfer_op_t op,
-                int num_iter,
-                int num_threads,
-                xferBenchStats &stats) {
-    std::atomic<int> ret{EXIT_SUCCESS};
-    stats.clear();
-
-    xferBenchTimer total_timer;
-#pragma omp parallel num_threads(num_threads)
-    {
-        xferBenchStats thread_stats;
-        thread_stats.reserve(static_cast<size_t>(std::max(num_iter, 0)));
-        xferBenchTimer timer;
-        const int tid = omp_get_thread_num();
-        const auto &local_iov = local_iovs[tid];
-        const auto &remote_iov = remote_iovs[tid];
-
-        nixl_xfer_dlist_t local_desc(local_segment_type);
-        nixl_xfer_dlist_t remote_desc(remote_segment_type);
-        iovListToNixlXferDlist(local_iov, local_desc);
-        iovListToNixlXferDlist(remote_iov, remote_desc);
-
-        nixl_opt_args_t params;
-        const int result = executeTransferIterations(agent,
-                                                     op,
-                                                     local_desc,
-                                                     remote_desc,
-                                                     "initiator",
-                                                     params,
-                                                     num_iter,
-                                                     timer,
-                                                     thread_stats);
-        if (result != EXIT_SUCCESS) {
-            ret.store(result);
-        }
-
-#pragma omp critical
-        { stats.add(thread_stats); }
-    }
-
-    stats.total_duration.add(total_timer.lap());
-    return ret.load();
-}
-
-class g3NixlTransferStrategy : public benchmarkTransferStrategy {
-public:
-    g3NixlTransferStrategy(nixlAgent &agent,
-                           const benchmarkConfig &config,
-                           remoteIovStrategy &remote_strategy)
-        : agent_(agent),
-          config_(config),
-          remote_strategy_(remote_strategy) {}
-
-    std::variant<xferBenchStats, int>
-    execute(const std::vector<std::vector<xferBenchIOV>> &local_descriptors) override {
-        if (g3Signaled()) {
-            return EXIT_FAILURE;
-        }
-
-        auto remote_result = remote_strategy_.createTransferIovs(local_descriptors,
-                                                                 config_.transfer.start_block_size);
-        if (std::holds_alternative<int>(remote_result)) {
-            return std::get<int>(remote_result);
-        }
-        auto remote_descriptors = std::get<std::vector<std::vector<xferBenchIOV>>>(
-            std::move(remote_result));
-
-        int num_iter = config_.common.num_iter / config_.transfer.num_threads;
-        int warmup_iter = config_.common.warmup_iter / config_.transfer.num_threads;
-        if (config_.transfer.start_block_size > LARGE_BLOCK_SIZE) {
-            num_iter /= config_.common.large_blk_iter_ftr;
-            warmup_iter /= config_.common.large_blk_iter_ftr;
-        }
-
-        xferBenchStats stats;
-        const nixl_xfer_op_t xfer_op = config_.transfer.op_type == XFERBENCH_OP_READ ? NIXL_READ :
-                                                                                       NIXL_WRITE;
-        int ret = executeTransfer(agent_,
-                                  DRAM_SEG,
-                                  FILE_SEG,
-                                  local_descriptors,
-                                  remote_descriptors,
-                                  xfer_op,
-                                  warmup_iter,
-                                  config_.transfer.num_threads,
-                                  stats);
-        if (ret != EXIT_SUCCESS) {
-            return ret;
-        }
-
-        stats.clear();
-        ret = executeTransfer(agent_,
-                              DRAM_SEG,
-                              FILE_SEG,
-                              local_descriptors,
-                              remote_descriptors,
-                              xfer_op,
-                              num_iter,
-                              config_.transfer.num_threads,
-                              stats);
-        if (ret != EXIT_SUCCESS) {
-            return ret;
-        }
-
-        if (g3Signaled()) {
-            return EXIT_FAILURE;
-        }
-
-        auto local_validation_descriptors = local_descriptors;
-        if (!xferBenchUtils::validateTransfer(config_,
-                                              true,
-                                              local_validation_descriptors,
-                                              remote_descriptors)) {
-            return EXIT_FAILURE;
-        }
-
-        return stats;
-    }
-
-private:
-    nixlAgent &agent_;
-    benchmarkConfig config_;
-    remoteIovStrategy &remote_strategy_;
-};
-
-class g3StatsResultSink : public benchmarkResultSink {
-public:
-    explicit
-    g3StatsResultSink(benchmarkConfig config)
-        : config_(std::move(config)) {}
+    std::atomic<int> g3_terminate{0};
 
     void
-    record(const xferBenchStats &stats) override {
-        xferBenchUtils::printStats(config_,
-                                   false,
-                                   config_.transfer.start_block_size,
-                                   config_.transfer.start_batch_size,
-                                   stats);
+    g3SignalHandler(int signal) {
+        (void)signal;
+        static const char msg[] = "Ctrl-C received, exiting...\n";
+        constexpr int stdout_fd = 1;
+        constexpr int max_count = 1;
+        auto size = write(stdout_fd, msg, sizeof(msg) - 1);
+        (void)size;
+
+        if (++g3_terminate > max_count) {
+            std::_Exit(EXIT_FAILURE);
+        }
     }
 
-private:
-    benchmarkConfig config_;
-};
+    bool
+    g3Signaled() {
+        return g3_terminate.load() != 0;
+    }
 
-benchmarkConfig
-makeG3BenchmarkConfig(const g3ScenarioRequest &request,
-                      southboundPluginBenchmarkCommand &plugin) {
-    const auto &metadata = plugin.metadataOptions();
-    benchmarkConfig config;
-    config.backend.name = std::string(plugin.name());
-    config.backend.memory_types = plugin.supportedMemoryTypes();
-    config.backend.options = metadata;
-    config.transfer.num_threads = request.parallel_threads;
-    config.transfer.start_block_size = request.block_size_bytes;
-    config.transfer.max_block_size = request.block_size_bytes;
-    config.transfer.start_batch_size = request.batch_size;
-    config.transfer.max_batch_size = request.batch_size;
-    config.transfer.op_type = request.action_mode == "read" || request.action_mode == "READ" ?
-        XFERBENCH_OP_READ :
-        XFERBENCH_OP_WRITE;
-    config.transfer.total_buffer_size = parseFileSize(request.file_size);
-    config.storage.filepath = metadata.stringOption("filepath");
-    config.storage.filenames = metadata.stringOption("filenames");
-    config.storage.num_files = metadata.intOption("num_files", 1);
-    config.storage.enable_direct = metadata.boolOption("enable_direct");
-    return config;
-}
+    nixl_status_t
+    executeSingleTransfer(nixlAgent &agent,
+                          nixlXferReqH *req,
+                          xferBenchTimer &timer,
+                          xferBenchStats &thread_stats) {
+        nixl_status_t rc = agent.postXferReq(req);
+        thread_stats.post_duration.add(timer.lap());
+        while (!g3Signaled() && NIXL_IN_PROG == rc) {
+            rc = agent.getXferStatus(req);
+        }
+        return g3Signaled() ? NIXL_ERR_UNKNOWN : rc;
+    }
+
+    int
+    executeTransferIterations(nixlAgent &agent,
+                              const nixl_xfer_op_t op,
+                              nixl_xfer_dlist_t &local_desc,
+                              nixl_xfer_dlist_t &remote_desc,
+                              const std::string &target,
+                              nixl_opt_args_t &params,
+                              int num_iter,
+                              xferBenchTimer &timer,
+                              xferBenchStats &thread_stats) {
+        if (num_iter <= 0) {
+            return 0;
+        }
+
+        nixlXferReqH *req = nullptr;
+        nixl_status_t create_rc =
+            agent.createXferReq(op, local_desc, remote_desc, target, req, &params);
+        if (NIXL_SUCCESS != create_rc) {
+            std::cerr << "createXferReq failed: " << nixlEnumStrings::statusStr(create_rc)
+                      << std::endl;
+            return EXIT_FAILURE;
+        }
+        thread_stats.prepare_duration.add(timer.lap());
+
+        for (int i = 0; i < num_iter; ++i) {
+            if (g3Signaled()) {
+                agent.releaseXferReq(req);
+                return EXIT_FAILURE;
+            }
+
+            nixl_status_t rc = executeSingleTransfer(agent, req, timer, thread_stats);
+            if (rc != NIXL_SUCCESS) {
+                std::cout << "NIXL Xfer failed with status: " << nixlEnumStrings::statusStr(rc)
+                          << std::endl;
+                agent.releaseXferReq(req);
+                return EXIT_FAILURE;
+            }
+            thread_stats.transfer_duration.add(timer.lap());
+        }
+
+        if (agent.releaseXferReq(req) != NIXL_SUCCESS) {
+            std::cout << "NIXL releaseXferReq failed" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        return EXIT_SUCCESS;
+    }
+
+    void
+    printDebugIovs(const std::vector<std::vector<xferBenchIOV>> &iovs, const std::string &header) {
+        std::cout << header << ":\n";
+        for (size_t i = 0; i < iovs.size(); ++i) {
+            std::cout << "  Thread " << i << " IOVs:\n";
+
+            size_t max_offset = 0;
+            for (const auto &iov : iovs[i]) {
+                std::cout << "    addr: " << std::dec << iov.addr << std::dec
+                          << ", len: " << iov.len << ", devId: " << iov.devId
+                          << ", metaInfo: " << iov.metaInfo << "\n";
+
+                if (iov.addr + iov.len > max_offset) {
+                    max_offset = iov.addr + iov.len;
+                }
+            }
+
+            std::cout << "    Total size covered by IOVs: " << max_offset << "\n";
+        }
+    }
+
+    int
+    executeTransfer(nixlAgent &agent,
+                    nixl_mem_t local_segment_type,
+                    nixl_mem_t remote_segment_type,
+                    const std::vector<std::vector<xferBenchIOV>> &local_iovs,
+                    const std::vector<std::vector<xferBenchIOV>> &remote_iovs,
+                    nixl_xfer_op_t op,
+                    int num_iter,
+                    int num_threads,
+                    xferBenchStats &stats) {
+        std::atomic<int> ret{EXIT_SUCCESS};
+        stats.clear();
+
+        if (false) {
+            printDebugIovs(local_iovs, "Local IOVs");
+            printDebugIovs(remote_iovs, "Remote IOVs");
+        }
+
+        xferBenchTimer total_timer;
+#pragma omp parallel num_threads(num_threads)
+        {
+            xferBenchStats thread_stats;
+            thread_stats.reserve(static_cast<size_t>(std::max(num_iter, 0)));
+            xferBenchTimer timer;
+            const int tid = omp_get_thread_num();
+            const auto &local_iov = local_iovs[tid];
+            const auto &remote_iov = remote_iovs[tid];
+
+            nixl_xfer_dlist_t local_desc(local_segment_type);
+            nixl_xfer_dlist_t remote_desc(remote_segment_type);
+            iovListToNixlXferDlist(local_iov, local_desc);
+            iovListToNixlXferDlist(remote_iov, remote_desc);
+
+            nixl_opt_args_t params;
+            const int result = executeTransferIterations(agent,
+                                                         op,
+                                                         local_desc,
+                                                         remote_desc,
+                                                         "initiator",
+                                                         params,
+                                                         num_iter,
+                                                         timer,
+                                                         thread_stats);
+            if (result != EXIT_SUCCESS) {
+                ret.store(result);
+            }
+
+#pragma omp critical
+            { stats.add(thread_stats); }
+        }
+
+        stats.total_duration.add(total_timer.lap());
+        return ret.load();
+    }
+
+    class g3NixlTransferStrategy : public benchmarkTransferStrategy {
+    public:
+        g3NixlTransferStrategy(nixlAgent &agent,
+                               const benchmarkConfig &config,
+                               remoteIovStrategy &remote_strategy)
+            : agent_(agent),
+              config_(config),
+              remote_strategy_(remote_strategy) {}
+
+        std::variant<xferBenchStats, int>
+        execute(const std::vector<std::vector<xferBenchIOV>> &local_descriptors) override {
+            if (g3Signaled()) {
+                return EXIT_FAILURE;
+            }
+
+            auto remote_result = remote_strategy_.createTransferIovs(
+                local_descriptors, config_.transfer.start_block_size);
+            if (std::holds_alternative<int>(remote_result)) {
+                return std::get<int>(remote_result);
+            }
+            auto remote_descriptors =
+                std::get<std::vector<std::vector<xferBenchIOV>>>(std::move(remote_result));
+
+            int num_iter = config_.common.num_iter / config_.transfer.num_threads;
+            int warmup_iter = config_.common.warmup_iter / config_.transfer.num_threads;
+            if (config_.transfer.start_block_size > LARGE_BLOCK_SIZE) {
+                num_iter /= config_.common.large_blk_iter_ftr;
+                warmup_iter /= config_.common.large_blk_iter_ftr;
+            }
+
+            xferBenchStats stats;
+            const nixl_xfer_op_t xfer_op =
+                config_.transfer.op_type == XFERBENCH_OP_READ ? NIXL_READ : NIXL_WRITE;
+
+            int ret = executeTransfer(agent_,
+                                      DRAM_SEG,
+                                      FILE_SEG,
+                                      local_descriptors,
+                                      remote_descriptors,
+                                      xfer_op,
+                                      num_iter,
+                                      config_.transfer.num_threads,
+                                      stats);
+
+            if (ret != EXIT_SUCCESS) {
+                return ret;
+            }
+
+            if (g3Signaled()) {
+                return EXIT_FAILURE;
+            }
+
+            auto local_validation_descriptors = local_descriptors;
+            if (!xferBenchUtils::validateTransfer(
+                    config_, true, local_validation_descriptors, remote_descriptors)) {
+                return EXIT_FAILURE;
+            }
+
+            return stats;
+        }
+
+    private:
+        nixlAgent &agent_;
+        benchmarkConfig config_;
+        remoteIovStrategy &remote_strategy_;
+    };
+
+    class g3StatsResultSink : public benchmarkResultSink {
+    public:
+        explicit g3StatsResultSink(benchmarkConfig config) : config_(std::move(config)) {}
+
+        void
+        record(const xferBenchStats &stats) override {
+            xferBenchUtils::printStats(config_,
+                                       false,
+                                       config_.transfer.start_block_size,
+                                       config_.transfer.start_batch_size,
+                                       stats);
+        }
+
+    private:
+        benchmarkConfig config_;
+    };
+
+    benchmarkConfig
+    makeG3BenchmarkConfig(const g3ScenarioRequest &request,
+                          southboundPluginBenchmarkCommand &plugin) {
+        const auto &metadata = plugin.metadataOptions();
+        benchmarkConfig config;
+        config.backend.name = std::string(plugin.name());
+        config.backend.memory_types = plugin.supportedMemoryTypes();
+        config.backend.options = metadata;
+        config.transfer.num_threads = request.parallel_threads;
+        config.transfer.start_block_size = request.block_size_bytes;
+        config.transfer.max_block_size = request.block_size_bytes;
+        config.transfer.start_batch_size = request.batch_size;
+        config.transfer.max_batch_size = request.batch_size;
+        config.transfer.op_type = request.action_mode == "read" || request.action_mode == "READ" ?
+            XFERBENCH_OP_READ :
+            XFERBENCH_OP_WRITE;
+        config.transfer.total_buffer_size = parseFileSize(request.file_size);
+        config.storage.filepath = metadata.stringOption("filepath");
+        config.storage.filenames = metadata.stringOption("filenames");
+        config.storage.num_files = metadata.intOption("num_files", 1);
+        config.storage.enable_direct = metadata.boolOption("enable_direct");
+        return config;
+    }
 
 } // namespace
 
@@ -313,11 +325,10 @@ g3ScenarioCommand::g3ScenarioCommand()
               "Sets whether the benchmark will read, write, or interleave reading and writing",
               &request_.action_mode,
               false),
-          cliOption::option(
-              "randomized-read-location",
-              "Whether to read / write in random locations or sequentially",
-              &request_.randomized_read_location,
-              false)} {}
+          cliOption::option("randomized-read-location",
+                            "Whether to read / write in random locations or sequentially",
+                            &request_.randomized_read_location,
+                            false)} {}
 
 std::string_view
 g3ScenarioCommand::name() const {
@@ -380,7 +391,8 @@ g3ScenarioCommand::isRequestValid(const g3ScenarioRequest &request) const {
 
 int
 g3ScenarioCommand::run(southboundPluginBenchmarkCommand &plugin) {
-    // this should  never occur as the CLI should only present things that have the proper capabilities, but this is here just in case...
+    // this should  never occur as the CLI should only present things that have the proper
+    // capabilities, but this is here just in case...
     if (!supportsPlugin(plugin.supportedMemoryTypes())) {
         std::cerr << "G3 requires a plugin that can read and write files" << std::endl;
         return 1;
@@ -392,9 +404,8 @@ g3ScenarioCommand::run(southboundPluginBenchmarkCommand &plugin) {
 
     g3_terminate.store(0);
     auto previous_signal_handler = std::signal(SIGINT, g3SignalHandler);
-    auto signal_guard = make_scope_guard([previous_signal_handler] {
-        std::signal(SIGINT, previous_signal_handler);
-    });
+    auto signal_guard = make_scope_guard(
+        [previous_signal_handler] { std::signal(SIGINT, previous_signal_handler); });
 
     benchmarkConfig benchmark_config = makeG3BenchmarkConfig(request_, plugin);
     xferBenchNullRT runtime;
@@ -409,7 +420,8 @@ g3ScenarioCommand::run(southboundPluginBenchmarkCommand &plugin) {
 
     nixl_mem_list_t mems;
     nixl_b_params_t backend_params;
-    nixl_status_t status = agent.getPluginParams(benchmark_config.backend.name, mems, backend_params);
+    nixl_status_t status =
+        agent.getPluginParams(benchmark_config.backend.name, mems, backend_params);
     if (status != NIXL_SUCCESS) {
         std::cerr << "getPluginParams failed: " << nixlEnumStrings::statusStr(status) << std::endl;
         return EXIT_FAILURE;
@@ -425,7 +437,8 @@ g3ScenarioCommand::run(southboundPluginBenchmarkCommand &plugin) {
 
     nullBenchmarkRuntimeSync sync;
     dramLocalIovStrategy local_iovs;
-    fileRemoteIovStrategy remote_iovs(benchmark_config.storage, benchmark_config.backend.name, benchmark_config.transfer.op_type);
+    fileRemoteIovStrategy remote_iovs(
+        benchmark_config.storage, benchmark_config.backend.name, benchmark_config.transfer.op_type);
     nixlStorageAllocator allocator(agent,
                                    backend,
                                    benchmark_config.transfer.num_threads,
@@ -434,8 +447,8 @@ g3ScenarioCommand::run(southboundPluginBenchmarkCommand &plugin) {
                                    local_iovs,
                                    remote_iovs);
 
-    auto descriptors = makeTransferDescriptorStrategy(benchmark_config,
-                                                      request_.randomized_read_location);
+    auto descriptors =
+        makeTransferDescriptorStrategy(benchmark_config, request_.randomized_read_location);
     g3NixlTransferStrategy transfer(agent, benchmark_config, remote_iovs);
     fixedIterationPolicy iterations(1, benchmarkAllocationLifecycle::AllocateOnce);
     g3StatsResultSink results(benchmark_config);

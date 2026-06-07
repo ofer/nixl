@@ -659,7 +659,11 @@ nixlStorageAllocator::allocate() {
     }
 
     benchmarkAllocation allocation;
-    const std::size_t buffer_size = perThreadBufferSize();
+    std::size_t buffer_size = total_buffer_size_;
+
+    if (align_for_direct_io_) {
+        buffer_size = ROUND_UP(buffer_size, page_size_);
+    }
 
     auto remote_result = remote_strategy_.create(num_threads_, buffer_size);
     if (std::holds_alternative<int>(remote_result)) {
@@ -762,15 +766,6 @@ nixlStorageAllocator::deregisterIovLists(const std::vector<std::vector<xferBench
             std::cerr << "NIXL: deregisterMem failed (Error code: " << status << ")" << std::endl;
         }
     }
-}
-
-std::size_t
-nixlStorageAllocator::perThreadBufferSize() const {
-    std::size_t buffer_size = total_buffer_size_ / static_cast<std::size_t>(num_threads_);
-    if (align_for_direct_io_) {
-        buffer_size = ROUND_UP(buffer_size, page_size_);
-    }
-    return buffer_size;
 }
 
 } // namespace nixlbench

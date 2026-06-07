@@ -216,9 +216,6 @@ private:
     deregisterIovLists(const std::vector<std::vector<xferBenchIOV>> &iov_lists,
                        nixl_mem_t segment_type);
 
-    std::size_t
-    perThreadBufferSize() const;
-
     nixlAgent &agent_;
     nixlBackendH *backend_;
     int num_threads_;

@@ -196,20 +196,6 @@ namespace {
                 return ret;
             }
 
-            stats.clear();
-            ret = executeTransfer(agent_,
-                                  DRAM_SEG,
-                                  FILE_SEG,
-                                  local_descriptors,
-                                  remote_descriptors,
-                                  xfer_op,
-                                  num_iter,
-                                  config_.transfer.num_threads,
-                                  stats);
-            if (ret != EXIT_SUCCESS) {
-                return ret;
-            }
-
             auto local_validation_descriptors = local_descriptors;
             if (!xferBenchUtils::validateTransfer(
                     config_, true, local_validation_descriptors, remote_descriptors)) {
@@ -261,7 +247,7 @@ namespace {
         config.transfer.total_buffer_size = parseFileSize(request.file_size);
         config.storage.filepath = metadata.stringOption("filepath");
         config.storage.filenames = metadata.stringOption("filenames");
-        config.storage.num_files = request.parallel_threads * metadata.intOption("num_files", 1);
+        config.storage.num_files = metadata.intOption("num_files", 1);
         config.storage.enable_direct = metadata.boolOption("enable_direct");
         return config;
     }
