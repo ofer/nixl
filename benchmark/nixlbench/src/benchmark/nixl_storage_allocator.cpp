@@ -473,27 +473,12 @@ fileRemoteIovStrategy::create(int num_threads, std::size_t buffer_size) {
 
     for (auto &file : files_) {
         auto basic_desc = createFileDesc(config_.op_type, config_.page_size, buffer_size, file);
-        std::cout << "Created file descriptor: " << basic_desc.value().addr
-                  << " with size: " << basic_desc.value().len << std::endl;
         if (!basic_desc) {
             cleanup(iovs);
             return EXIT_FAILURE;
         }
         iovs.push_back({basic_desc.value()});
     }
-    // std::size_t file_idx = 0;
-    // for (int list_idx = 0; list_idx < num_threads; ++list_idx) {
-    //     auto basic_desc =
-    //         createFileDesc(config_.op_type, config_.page_size, buffer_size, files_[file_idx]);
-    //     std::cout << "Created file descriptor: " << basic_desc.value().addr << " with size: " <<
-    //     basic_desc.value().len << std::endl;
-    //  if (!basic_desc) {
-    //         cleanup(iovs);
-    //         return EXIT_FAILURE;
-    //     }
-    //     iovs.push_back({basic_desc.value()});
-    //     file_idx = (file_idx + 1) % files_.size();
-    // }
 
     return iovs;
 }
@@ -687,7 +672,8 @@ nixlStorageAllocator::allocate() {
         return EXIT_FAILURE;
     }
 
-    auto local_result = local_strategy_.create(num_threads_, buffer_size);
+    auto local_result =
+        local_strategy_.create(num_threads_ * allocation.remote_iovs.size(), buffer_size);
     if (std::holds_alternative<int>(local_result)) {
         deregisterIovLists(allocation.remote_iovs, remote_strategy_.segmentType());
         remote_strategy_.cleanup(allocation.remote_iovs);
@@ -696,35 +682,18 @@ nixlStorageAllocator::allocate() {
     allocation.local_iovs =
         std::move(std::get<std::vector<std::vector<xferBenchIOV>>>(local_result));
 
-    // align the number of local and remote, there should be every combination of local and remote
-    // copy local iov's to each remote iov
-    std::vector<std::vector<xferBenchIOV>> aligned_local_iovs;
-    aligned_local_iovs.reserve(allocation.remote_iovs.size() * num_threads_);
-
-    std::cout << "allocation.local_iovs.size(): " << allocation.local_iovs.size() << std::endl;
-    std::cout << "allocation.local_iovs[0].size(): " << allocation.local_iovs[0].size()
-              << std::endl;
-    std::cout << "num_threads_: " << num_threads_ << std::endl;
-    std::cout << "aligned_local_iovs.size(): " << aligned_local_iovs.size() << std::endl;
-
-    // repeat the local iovs remote_iovs times
-    for (std::size_t remoteOffset = 0; remoteOffset < allocation.remote_iovs.size();
-         ++remoteOffset) {
-        for (std::size_t localOffset = 0; localOffset < allocation.local_iovs.size();
-             ++localOffset) {
-            aligned_local_iovs.push_back(allocation.local_iovs[localOffset]);
-        }
-    }
-
-    allocation.local_iovs = aligned_local_iovs;
-
     if (!allocation.remote_iovs.empty()) {
         for (std::size_t remoteOffset = 0; remoteOffset < allocation.remote_iovs.size();
              ++remoteOffset) {
-            for (std::size_t threadIndex = 0; threadIndex < allocation.local_iovs.size();
-                 ++threadIndex) {
+            for (int threadIndex = 0; threadIndex < num_threads_; ++threadIndex) {
                 if (!allocation.remote_iovs[threadIndex].empty() &&
                     !allocation.local_iovs[threadIndex].empty()) {
+                    // std::cout << "Remote offset :" << remoteOffset
+                    //           << " Thread index: " << threadIndex
+                    //           << " Remote meta info: " << threadIndex + remoteOffset *
+                    //           num_threads_
+                    //           << " Local size: " << allocation.local_iovs.size()
+                    //           << " Remote size: " << allocation.remote_iovs.size() << std::endl;
                     allocation.local_iovs[threadIndex + remoteOffset * num_threads_][0].metaInfo =
                         allocation.remote_iovs[remoteOffset][0].metaInfo;
                 }

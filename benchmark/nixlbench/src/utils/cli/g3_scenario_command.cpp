@@ -83,16 +83,6 @@ executeTransferIterations(nixlAgent &agent,
     }
 
     nixlXferReqH *req = nullptr;
-    // Print out local and remote descriptions along with the op
-    std::cout << "Transfer operation: " << (op == NIXL_READ ? "READ" : "WRITE") << std::endl;
-    std::cout << "Local descriptors:" << std::endl;
-    for (const auto& desc : local_desc) {
-        std::cout << "  addr: " << desc.addr << " len: " << desc.len << " devId: " << desc.devId << std::endl;
-    }
-    std::cout << "Remote descriptors:" << std::endl;
-    for (const auto& desc : remote_desc) {
-        std::cout << "  addr: " << desc.addr << " len: " << desc.len << " devId: " << desc.devId << std::endl;
-    }
     nixl_status_t create_rc = agent.createXferReq(op, local_desc, remote_desc, target, req, &params);
     if (NIXL_SUCCESS != create_rc) {
         std::cerr << "createXferReq failed: " << nixlEnumStrings::statusStr(create_rc) << std::endl;

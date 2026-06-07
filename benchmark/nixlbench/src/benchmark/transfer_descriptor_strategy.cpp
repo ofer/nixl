@@ -23,15 +23,6 @@ std::pair<std::size_t, std::size_t>
 getStrideScheme(const transferDescriptorConfig &config) {
     std::size_t count = 1;
 
-    std::cout << "config.num_initiator_dev: " << config.num_initiator_dev << std::endl;
-    std::cout << "config.num_threads: " << config.num_threads << std::endl;
-    std::cout << "config.total_buffer_size: " << config.total_buffer_size << std::endl;
-    std::cout << "config.scheme: " << config.scheme << std::endl;
-    std::cout << "config.is_initiator: " << config.is_initiator << std::endl;
-    std::cout << "config.is_target: " << config.is_target << std::endl;
-    std::cout << "config.num_target_dev: " << config.num_target_dev << std::endl;
-    std::cout << "config.block_size: " << config.block_size << std::endl;
-    std::cout << "config.batch_size: " << config.batch_size << std::endl;
     const std::size_t buffer_size =
         config.total_buffer_size /
         (static_cast<std::size_t>(config.num_initiator_dev) *
@@ -159,7 +150,6 @@ createTransferDescLists(const transferDescriptorConfig &config,
             for (std::size_t i = 0; i < count; i++) {
                 std::size_t dev_offset = ((indices[i] * stride) % iov.len);
 
-                std::cout << "dev_offset: " << dev_offset << std::endl;
                 for (std::size_t j = 0; j < config.batch_size; j++) {
                     std::size_t block_offset = ((j * config.block_size) % iov.len);
                     if (block_offset + config.block_size > iov.len) {
@@ -173,11 +163,9 @@ createTransferDescLists(const transferDescriptorConfig &config,
             }
         }
         if (randomized_rw_location) {
-            std::cout << "Shuffling xfer_list" << std::endl;
-            std::cout << "xfer_list count: " << xfer_list.size() << std::endl;
             std::shuffle(xfer_list.begin(), xfer_list.end(), shuffle_rng);
         }
-    
+
         xfer_lists.push_back(xfer_list);
     }
 
