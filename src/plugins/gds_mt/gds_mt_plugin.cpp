@@ -32,12 +32,6 @@ getGdsMtBackendOptions() {
 }
 
 } // namespace
- 
-nixlBackendPluginCapabilities
-buildGdsMtCapabilities() {
-    return {false};
-}
-
 
 #ifdef STATIC_PLUGIN_GDS_MT
 nixlBackendPlugin *
@@ -46,8 +40,7 @@ createStaticGDS_MTPlugin() {
                                    "GDS_MT",
                                    "0.1.0",
                                    getGdsMtBackendOptions(),
-                                   {DRAM_SEG, VRAM_SEG, FILE_SEG},
-                                   buildGdsMtCapabilities());
+                                   {DRAM_SEG, VRAM_SEG, FILE_SEG});
 }
 #else
 extern "C" NIXL_PLUGIN_EXPORT nixlBackendPlugin *
@@ -56,8 +49,7 @@ nixl_plugin_init() {
                                    "GDS_MT",
                                    "0.1.0",
                                    getGdsMtBackendOptions(),
-                                   {DRAM_SEG, VRAM_SEG, FILE_SEG},
-                                   buildGdsMtCapabilities());
+                                   {DRAM_SEG, VRAM_SEG, FILE_SEG});
 }
 
 extern "C" NIXL_PLUGIN_EXPORT void

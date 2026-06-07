@@ -248,7 +248,6 @@ namespace {
         const auto &metadata = plugin.metadataOptions();
         benchmarkConfig config;
         config.backend.name = std::string(plugin.name());
-        config.backend.capabilities = plugin.capabilities();
         config.backend.memory_types = plugin.supportedMemoryTypes();
         config.backend.options = metadata;
         config.transfer.num_threads = request.parallel_threads;
@@ -264,9 +263,6 @@ namespace {
         config.storage.filenames = metadata.stringOption("filenames");
         config.storage.num_files = request.parallel_threads * metadata.intOption("num_files", 1);
         config.storage.enable_direct = metadata.boolOption("enable_direct");
-        if (config.backend.capabilities.requiresDirectStorage) {
-            config.storage.enable_direct = true;
-        }
         return config;
     }
 
@@ -280,14 +276,14 @@ g4ScenarioCommand::g4ScenarioCommand()
           cliOption::option("parallel_threads",
                             "Parallel threads",
                             &request_.parallel_threads,
-                            true),
+                            false),
           cliOption::option("action_mode", "Action mode", &request_.action_mode, true),
           cliOption::option("randomized_read_location",
                             "Randomized read location",
                             &request_.randomized_read_location,
-                            true),
-          cliOption::option("batch_size", "Batch size", &request_.batch_size, true),
-          cliOption::option("open_behavior", "Open behavior", &request_.open_behavior, true)} {}
+                            false),
+          cliOption::option("batch_size", "Batch size", &request_.batch_size, false),
+          cliOption::option("open_behavior", "Open behavior", &request_.open_behavior, false)} {}
 
 std::string_view
 g4ScenarioCommand::name() const {
@@ -310,8 +306,7 @@ g4ScenarioCommand::scenarioType() const {
 }
 
 bool
-g4ScenarioCommand::supportsPlugin(nixl_mem_list_t supportedMemoryTypes,
-                                  nixlBackendPluginCapabilities pluginCapabilities) const {
+g4ScenarioCommand::supportsPlugin(nixl_mem_list_t supportedMemoryTypes) const {
     // the g4 scenario only runs on files and objects
     if (std::find(supportedMemoryTypes.begin(), supportedMemoryTypes.end(), FILE_SEG) ==
             supportedMemoryTypes.end() &&
@@ -373,7 +368,7 @@ int
 g4ScenarioCommand::run(southboundPluginBenchmarkCommand &plugin) {
     // this should  never occur as the CLI should only present things that have the proper
     // capabilities, but this is here just in case...
-    if (!supportsPlugin(plugin.supportedMemoryTypes(), plugin.capabilities())) {
+    if (!supportsPlugin(plugin.supportedMemoryTypes())) {
         std::cerr << "G4 requires a plugin that can read and write files or objects" << std::endl;
         return 1;
     }

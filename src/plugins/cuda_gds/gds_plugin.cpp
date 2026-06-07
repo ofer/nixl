@@ -30,11 +30,6 @@ getGdsBackendOptions() {
 }
 
 } // namespace
- 
-nixlBackendPluginCapabilities
-buildGdsCapabilities() {
-    return {false};
-}
 
 #ifdef STATIC_PLUGIN_GDS
 nixlBackendPlugin *
@@ -43,8 +38,7 @@ createStaticGDSPlugin() {
                                 "GDS",
                                 "0.1.1",
                                 getGdsBackendOptions(),
-                                {DRAM_SEG, VRAM_SEG, FILE_SEG},
-                                buildGdsCapabilities());
+                                {DRAM_SEG, VRAM_SEG, FILE_SEG});
 }
 #else
 extern "C" NIXL_PLUGIN_EXPORT nixlBackendPlugin *

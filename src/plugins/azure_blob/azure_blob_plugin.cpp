@@ -41,11 +41,6 @@ getAzureBlobBackendOptions() {
 
 } // namespace
 
-nixlBackendPluginCapabilities
-buildAzureBlobCapabilities() {
-    return {true, false, false};
-}
-
 #ifdef STATIC_PLUGIN_AZURE
 nixlBackendPlugin *
 createStaticAZUREPlugin() {
@@ -53,8 +48,7 @@ createStaticAZUREPlugin() {
                                        "AZURE_BLOB",
                                        "0.1.0",
                                        getAzureBlobBackendOptions(),
-                                       {DRAM_SEG, OBJ_SEG},
-                                       buildAzureBlobCapabilities());
+                                       {DRAM_SEG, OBJ_SEG});
 }
 #else
 extern "C" NIXL_PLUGIN_EXPORT nixlBackendPlugin *
@@ -63,8 +57,7 @@ nixl_plugin_init() {
                                        "AZURE_BLOB",
                                        "0.1.0",
                                        getAzureBlobBackendOptions(),
-                                       {DRAM_SEG, OBJ_SEG},
-                                       buildAzureBlobCapabilities());
+                                       {DRAM_SEG, OBJ_SEG});
 }
 
 extern "C" NIXL_PLUGIN_EXPORT void

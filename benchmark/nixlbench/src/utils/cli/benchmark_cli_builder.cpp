@@ -137,7 +137,7 @@ bindScenario(CLI::App &scenario_root,
                                                     std::string(scenario.description()));
     bindOptions(*subcommand, scenario, provided_options);
     for (auto &plugin : plugins) {
-        if (scenario.supportsPlugin(plugin->supportedMemoryTypes(), plugin->capabilities())) {
+        if (scenario.supportsPlugin(plugin->supportedMemoryTypes())) {
             bindPlugin(*subcommand, *plugin, selected_plugin, provided_options);
         }
     }
@@ -208,8 +208,7 @@ benchmarkCliBuilder::parse(int argc, char **argv) {
     if (selectedScenario_ == nullptr || selectedPlugin_ == nullptr) {
         return 1;
     }
-    if (!selectedScenario_->supportsPlugin(selectedPlugin_->supportedMemoryTypes(),
-                                           selectedPlugin_->capabilities())) {
+    if (!selectedScenario_->supportsPlugin(selectedPlugin_->supportedMemoryTypes())) {
         std::cerr << "Unsupported scenario/plugin combination" << std::endl;
         return 1;
     }

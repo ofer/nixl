@@ -72,16 +72,11 @@ southboundPluginRegistry::createForAvailableMetadataPlugins() const {
     for (const auto &plugin_name : available_plugins) {
         nixl_mem_list_t mems;
         nixl_b_params_t params;
-        nixlBackendPluginCapabilities capabilities;
         if (agent->getPluginParams(plugin_name, mems, params) != NIXL_SUCCESS) {
             continue;
         }
-        if (agent->getPluginCapabilities(plugin_name, capabilities) != NIXL_SUCCESS) {
-            capabilities = {};
-        }
 
-        plugins.push_back(
-            std::make_unique<metadataPluginCommand>(plugin_name, capabilities, params, mems));
+        plugins.push_back(std::make_unique<metadataPluginCommand>(plugin_name, params, mems));
     }
 
 

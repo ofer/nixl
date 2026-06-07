@@ -32,7 +32,6 @@ expectOption(const metadataPluginCommand &command, const std::string &name) {
 
 TEST(BackendOptionInventoryTest, UcxOptionsExposeBenchAndEngineKeys) {
     metadataPluginCommand command("UCX",
-                                  {},
                                   availableOptions({"ucx_devices",
                                                     "device_list",
                                                     "num_workers",
@@ -55,7 +54,6 @@ TEST(BackendOptionInventoryTest, UcxOptionsExposeBenchAndEngineKeys) {
 
 TEST(BackendOptionInventoryTest, StorageBackendsExposeOptions) {
     metadataPluginCommand posix("POSIX",
-                                {},
                                 availableOptions({"use_aio",
                                                   "use_uring",
                                                   "use_posix_aio",
@@ -69,7 +67,6 @@ TEST(BackendOptionInventoryTest, StorageBackendsExposeOptions) {
     expectOption(posix, "kernel_queue_size");
 
     metadataPluginCommand gds("GDS",
-                              {},
                               availableOptions({"batch_pool_size",
                                                 "batch_limit",
                                                 "max_request_size"}),
@@ -79,7 +76,6 @@ TEST(BackendOptionInventoryTest, StorageBackendsExposeOptions) {
     expectOption(gds, "max_request_size");
 
     metadataPluginCommand hf3fs("HF3FS",
-                                {},
                                 availableOptions({"mount_point", "mem_config", "iopool_size"}),
                                 {FILE_SEG, DRAM_SEG});
     expectOption(hf3fs, "mount_point");
@@ -89,7 +85,6 @@ TEST(BackendOptionInventoryTest, StorageBackendsExposeOptions) {
 
 TEST(BackendOptionInventoryTest, ObjectBackendsExposeOptions) {
     metadataPluginCommand obj("OBJ",
-                              {},
                               availableOptions({"access_key",
                                                 "secret_key",
                                                 "session_token",
@@ -111,7 +106,6 @@ TEST(BackendOptionInventoryTest, ObjectBackendsExposeOptions) {
     expectOption(obj, "num_threads");
 
     metadataPluginCommand azure("AZURE_BLOB",
-                                {},
                                 availableOptions({"account_url",
                                                   "container_name",
                                                   "connection_string",
@@ -127,7 +121,6 @@ TEST(BackendOptionInventoryTest, ObjectBackendsExposeOptions) {
 
 TEST(BackendOptionInventoryTest, NetworkBackendsExposeOptions) {
     metadataPluginCommand gpunetio("GPUNETIO",
-                                   {},
                                    availableOptions({"network_devices",
                                                      "oob_interface",
                                                      "gpu_devices",
@@ -139,14 +132,12 @@ TEST(BackendOptionInventoryTest, NetworkBackendsExposeOptions) {
     expectOption(gpunetio, "cuda_streams");
 
     metadataPluginCommand uccl("UCCL",
-                               {},
                                availableOptions({"in_python", "num_cpus"}),
                                {DRAM_SEG, VRAM_SEG});
     expectOption(uccl, "in_python");
     expectOption(uccl, "num_cpus");
 
     metadataPluginCommand libfabric("LIBFABRIC",
-                                    {},
                                     availableOptions({"striping_threshold",
                                                       "max_bw_per_dram_seg"}),
                                     {DRAM_SEG, VRAM_SEG});
@@ -156,7 +147,6 @@ TEST(BackendOptionInventoryTest, NetworkBackendsExposeOptions) {
 
 TEST(BackendOptionInventoryTest, GusliExposesEngineAndBenchConfigInputs) {
     metadataPluginCommand command("GUSLI",
-                                  {},
                                   availableOptions({"client_name",
                                                     "max_num_simultaneous_requests",
                                                     "config_file",

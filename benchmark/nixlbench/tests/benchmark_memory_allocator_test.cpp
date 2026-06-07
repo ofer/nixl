@@ -45,12 +45,9 @@ TEST(BenchmarkMemoryAllocatorTest, FileRemoteStrategyCreatesFileAndTransferIovs)
     ASSERT_FALSE(std::holds_alternative<int>(create_result));
     auto storage_iovs = std::get<std::vector<std::vector<xferBenchIOV>>>(std::move(create_result));
 
-    ASSERT_EQ(storage_iovs.size(), 2U);
+    ASSERT_EQ(storage_iovs.size(), 1U);
     ASSERT_EQ(storage_iovs[0].size(), 1U);
-    ASSERT_EQ(storage_iovs[1].size(), 1U);
     EXPECT_EQ(storage_iovs[0][0].addr, 0U);
-    EXPECT_EQ(storage_iovs[1][0].addr, 4096U);
-    EXPECT_EQ(storage_iovs[0][0].devId, storage_iovs[1][0].devId);
 
     std::vector<std::vector<xferBenchIOV>> local_iovs{
         {xferBenchIOV(1000, 8192, 0)},
@@ -67,6 +64,7 @@ TEST(BenchmarkMemoryAllocatorTest, FileRemoteStrategyCreatesFileAndTransferIovs)
     EXPECT_EQ(transfer_iovs[1][0].addr, 0U);
     EXPECT_EQ(transfer_iovs[1][0].len, 1024U);
     EXPECT_EQ(transfer_iovs[0][0].devId, storage_iovs[0][0].devId);
+    EXPECT_EQ(transfer_iovs[1][0].devId, storage_iovs[0][0].devId);
 
     strategy.cleanup(storage_iovs);
     EXPECT_TRUE(storage_iovs.empty());

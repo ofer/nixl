@@ -32,32 +32,18 @@ getHf3fsBackendOptions() {
 }
 
 } // namespace
- 
-nixlBackendPluginCapabilities
-buildHf3fsCapabilities() {
-    return { false};
-}
-
 
 #ifdef STATIC_PLUGIN_HF3FS
 nixlBackendPlugin *
 createStaticHF3FSPlugin() {
-    return hf3fs_plugin_t::create(NIXL_PLUGIN_API_VERSION,
-                                  "HF3FS",
-                                  "0.1.0",
-                                  getHf3fsBackendOptions(),
-                                  {FILE_SEG, DRAM_SEG},
-                                  buildHf3fsCapabilities());
+    return hf3fs_plugin_t::create(
+        NIXL_PLUGIN_API_VERSION, "HF3FS", "0.1.0", getHf3fsBackendOptions(), {FILE_SEG, DRAM_SEG});
 }
 #else
 extern "C" NIXL_PLUGIN_EXPORT nixlBackendPlugin *
 nixl_plugin_init() {
-    return hf3fs_plugin_t::create(NIXL_PLUGIN_API_VERSION,
-                                  "HF3FS",
-                                  "0.1.0",
-                                  getHf3fsBackendOptions(),
-                                  {FILE_SEG, DRAM_SEG},
-                                  buildHf3fsCapabilities());
+    return hf3fs_plugin_t::create(
+        NIXL_PLUGIN_API_VERSION, "HF3FS", "0.1.0", getHf3fsBackendOptions(), {FILE_SEG, DRAM_SEG});
 }
 
 extern "C" NIXL_PLUGIN_EXPORT void

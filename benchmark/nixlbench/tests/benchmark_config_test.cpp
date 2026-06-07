@@ -44,7 +44,6 @@ TEST(BenchmarkConfigTest, DefaultsLeaveBackendUnselected) {
     EXPECT_EQ(config.transfer.num_threads, 1);
 
     EXPECT_TRUE(config.backend.name.empty());
-    EXPECT_FALSE(config.backend.capabilities.requiresDirectStorage);
     EXPECT_TRUE(config.backend.memory_types.empty());
     EXPECT_TRUE(config.backend.options.empty());
 

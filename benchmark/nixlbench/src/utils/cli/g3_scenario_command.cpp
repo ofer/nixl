@@ -270,7 +270,6 @@ makeG3BenchmarkConfig(const g3ScenarioRequest &request,
     const auto &metadata = plugin.metadataOptions();
     benchmarkConfig config;
     config.backend.name = std::string(plugin.name());
-    config.backend.capabilities = plugin.capabilities();
     config.backend.memory_types = plugin.supportedMemoryTypes();
     config.backend.options = metadata;
     config.transfer.num_threads = request.parallel_threads;
@@ -286,9 +285,6 @@ makeG3BenchmarkConfig(const g3ScenarioRequest &request,
     config.storage.filenames = metadata.stringOption("filenames");
     config.storage.num_files = request.parallel_threads * metadata.intOption("num_files", 1);
     config.storage.enable_direct = metadata.boolOption("enable_direct");
-    if (config.backend.capabilities.requiresDirectStorage) {
-        config.storage.enable_direct = true;
-    }
     return config;
 }
 
@@ -346,10 +342,7 @@ g3ScenarioCommand::scenarioType() const {
 }
 
 bool
-g3ScenarioCommand::supportsPlugin(
-    nixl_mem_list_t supportedMemoryTypes,
-    nixlBackendPluginCapabilities pluginCapabilities) const {
-    (void)pluginCapabilities;
+g3ScenarioCommand::supportsPlugin(nixl_mem_list_t supportedMemoryTypes) const {
     if (std::find(supportedMemoryTypes.begin(), supportedMemoryTypes.end(), FILE_SEG) ==
         supportedMemoryTypes.end()) {
         return false;
@@ -388,7 +381,7 @@ g3ScenarioCommand::isRequestValid(const g3ScenarioRequest &request) const {
 int
 g3ScenarioCommand::run(southboundPluginBenchmarkCommand &plugin) {
     // this should  never occur as the CLI should only present things that have the proper capabilities, but this is here just in case...
-    if (!supportsPlugin(plugin.supportedMemoryTypes(), plugin.capabilities())) {
+    if (!supportsPlugin(plugin.supportedMemoryTypes())) {
         std::cerr << "G3 requires a plugin that can read and write files" << std::endl;
         return 1;
     }

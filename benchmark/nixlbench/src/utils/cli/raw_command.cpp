@@ -188,7 +188,6 @@ namespace {
         const auto &options = plugin.metadataOptions();
         const auto &supported_memory_types = plugin.supportedMemoryTypes();
         raw.backend.setProvided(std::string(plugin.name()));
-        raw.backend_capabilities = plugin.capabilities();
         raw.backend_memory_types = supported_memory_types;
         raw.backend_options = metadataPluginOptionMap(options);
         const bool can_read_write_files =
@@ -340,10 +339,8 @@ rawCommand::scenarioType() const {
 }
 
 bool
-rawCommand::supportsPlugin(nixl_mem_list_t supportedMemoryTypes,
-                           nixlBackendPluginCapabilities pluginCapabilities) const {
+rawCommand::supportsPlugin(nixl_mem_list_t supportedMemoryTypes) const {
     (void)supportedMemoryTypes;
-    (void)pluginCapabilities;
     return true;
 }
 

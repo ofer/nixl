@@ -80,9 +80,6 @@ applyRawRequestToConfig(const rawRequest &request, xferBenchConfig &config) {
 benchmarkConfig
 makeValidatedBenchmarkConfig(const rawRequest &request, const xferBenchConfig &legacy_config) {
     benchmarkConfig config = makeBenchmarkConfigFromLegacy(legacy_config);
-    if (request.backend_capabilities.requiresDirectStorage) {
-        config.backend.capabilities.requiresDirectStorage = true;
-    }
     if (!request.backend_memory_types.empty()) {
         config.backend.memory_types = request.backend_memory_types;
     }

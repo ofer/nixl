@@ -232,26 +232,23 @@ TEST(BenchmarkConfigAdapterTest, LegacyConversionMapsGusliFieldsWithoutValidatio
 TEST(BenchmarkConfigAdapterTest, RawRequestPreservesDynamicPluginOptions) {
     rawRequest request;
     request.backend.setProvided("NEW_PLUGIN");
-    request.backend_capabilities.requiresDirectStorage = true;
     request.backend_memory_types = {FILE_SEG, DRAM_SEG};
     request.backend_options["custom_param"] = {"custom-value", false, true};
 
     const benchmarkConfig config = makeBenchmarkConfigFromRawRequest(request);
 
     EXPECT_EQ(config.backend.name, "NEW_PLUGIN");
-    EXPECT_TRUE(config.backend.capabilities.requiresDirectStorage);
     EXPECT_EQ(config.backend.memory_types, (nixl_mem_list_t{FILE_SEG, DRAM_SEG}));
+    EXPECT_TRUE(isStorageBackend(config.backend));
     EXPECT_EQ(option(config, "custom_param").value, "custom-value");
 }
 
 TEST(BenchmarkConfigAdapterTest, MetadataPluginStoresProvidedFileWorkloadOptions) {
-    nixlBackendPluginCapabilities capabilities;
     nixl_b_params_t option_specs{
         {"use_posix_aio",
          ""},
     };
-    metadataPluginCommand plugin(
-        XFERBENCH_BACKEND_POSIX, capabilities, option_specs, {FILE_SEG, DRAM_SEG});
+    metadataPluginCommand plugin(XFERBENCH_BACKEND_POSIX, option_specs, {FILE_SEG, DRAM_SEG});
     provideStringOption(plugin, "filepath", "/images/containerSpace/");
     provideFlagOption(plugin, "enable_direct");
     provideStringOption(plugin, "use_posix_aio", "true");
@@ -267,11 +264,10 @@ TEST(BenchmarkConfigAdapterTest, MetadataPluginStoresProvidedFileWorkloadOptions
 }
 
 TEST(BenchmarkConfigAdapterTest, MetadataPluginTreatsBackendOptionsAsValueOptions) {
-    nixlBackendPluginCapabilities capabilities;
     nixl_b_params_t option_specs{{"use_virtual_addressing", ""},
                                  {"accelerated", ""},
                                  {"num_threads", ""}};
-    metadataPluginCommand plugin(XFERBENCH_BACKEND_OBJ, capabilities, option_specs, {DRAM_SEG});
+    metadataPluginCommand plugin(XFERBENCH_BACKEND_OBJ, option_specs, {DRAM_SEG});
 
     const auto &cli_options = plugin.getOptions();
     const auto find_kind = [&](const std::string &name) {

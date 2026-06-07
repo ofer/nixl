@@ -37,8 +37,7 @@ public:
     scenarioType() const = 0;
 
     virtual bool
-    supportsPlugin(nixl_mem_list_t supportedMemoryTypes,
-                   nixlBackendPluginCapabilities pluginCapabilities) const = 0;
+    supportsPlugin(nixl_mem_list_t supportedMemoryTypes) const = 0;
 
     /**
      * @brief Return scenario request values for display before execution.
@@ -58,9 +57,6 @@ public:
 
     virtual const metadataPluginOptionMap &
     metadataOptions() const = 0;
-
-    virtual const nixlBackendPluginCapabilities &
-    capabilities() const = 0;
 
     /**
      * @brief Return plugin request values for display before execution.

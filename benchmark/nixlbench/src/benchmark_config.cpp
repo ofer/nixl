@@ -46,15 +46,6 @@ namespace {
         options[name] = makeStringOption(std::to_string(value));
     }
 
-    nixlBackendPluginCapabilities
-    legacyBackendCapabilities(std::string_view backend) {
-        nixlBackendPluginCapabilities capabilities;
-        if (backend == XFERBENCH_BACKEND_GUSLI) {
-            capabilities.requiresDirectStorage = true;
-        }
-        return capabilities;
-    }
-
     nixl_mem_list_t
     legacyBackendMemoryTypes(std::string_view backend) {
         if (backend == XFERBENCH_BACKEND_GDS || backend == XFERBENCH_BACKEND_GDS_MT ||
@@ -69,12 +60,6 @@ namespace {
             return {DRAM_SEG, BLK_SEG};
         }
         return {};
-    }
-
-    nixlBackendPluginCapabilities
-    mergeCapabilities(nixlBackendPluginCapabilities lhs, nixlBackendPluginCapabilities rhs) {
-        lhs.requiresDirectStorage = lhs.requiresDirectStorage || rhs.requiresDirectStorage;
-        return lhs;
     }
 
     template<typename T>
@@ -321,7 +306,6 @@ makeBenchmarkConfigFromLegacy(const xferBenchConfig &legacy_config) {
     config.worker.enable_vmm = legacy_config.enable_vmm;
 
     config.backend.name = legacy_config.backend;
-    config.backend.capabilities = legacyBackendCapabilities(legacy_config.backend);
     config.backend.memory_types = legacyBackendMemoryTypes(legacy_config.backend);
     addLegacyBackendOptions(config, legacy_config);
 
@@ -368,8 +352,6 @@ makeBenchmarkConfigFromRawRequest(const rawRequest &request) {
     config.worker.enable_vmm = request.enable_vmm.value;
 
     config.backend.name = request.backend.value;
-    config.backend.capabilities = mergeCapabilities(
-        legacyBackendCapabilities(request.backend.value), request.backend_capabilities);
     config.backend.memory_types = request.backend_memory_types;
     config.backend.options = request.backend_options;
     addRawBackendOptions(config, request);

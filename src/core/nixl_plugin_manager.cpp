@@ -575,15 +575,6 @@
      return mems; // Return empty mems if not implemented
  }
 
- nixlBackendPluginCapabilities
- nixlBackendPluginHandle::getBackendCapabilities() const {
-     nixlBackendPluginCapabilities capabilities;
-     if (plugin_ && plugin_->get_backend_capabilities) {
-         return plugin_->get_backend_capabilities();
-     }
-     return capabilities;
- }
-  
  std::vector<nixl_backend_t>
  nixlPluginManager::getLoadedBackendPluginNames() {
      lock_guard lg(lock);

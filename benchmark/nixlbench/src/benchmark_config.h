@@ -61,7 +61,6 @@ struct workerConfig {
 
 struct backendConfig {
     std::string name = "";
-    nixlBackendPluginCapabilities capabilities{};
     metadataPluginOptionMap options;
     nixl_mem_list_t memory_types;
 };

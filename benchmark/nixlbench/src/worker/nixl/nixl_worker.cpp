@@ -57,7 +57,9 @@ resolveVramSegment() {
 #if HAVE_CUDA
     return VRAM_SEG;
 #else
-    if (neuronCoreCount() > 0) return VRAM_SEG;
+    if (neuronCoreCount() > 0) {
+        return VRAM_SEG;
+    }
     std::cerr << "VRAM not supported without CUDA or Neuron" << std::endl;
     std::exit(EXIT_FAILURE);
 #endif
@@ -206,7 +208,8 @@ xferBenchNixlWorker::xferBenchNixlWorker(const nixlbench::benchmarkConfig &bench
 
     CHECK_NIXL_ERROR(agent->getPluginParams(benchmark_config.backend.name, mems, backend_params),
                      "getPluginParams failed!");
-    if (benchmark_config.backend.capabilities.requiresDirectStorage) {
+    // Check if this is Gusli, if it is set up storage direct
+    if (benchmark_config.backend.name == XFERBENCH_BACKEND_GUSLI) {
         if (!config.storage_enable_direct) {
             std::cout << benchmark_config.backend.name
                       << " backend: Automatically enabling storage_enable_direct for direct I/O"
@@ -219,8 +222,9 @@ xferBenchNixlWorker::xferBenchNixlWorker(const nixlbench::benchmarkConfig &bench
         benchmark_config, std::move(backend_params), devices, isInitiator(), rank, gusli_devices);
     printNixlBackendParams(benchmark_config, backend_params, devices, rank, name, gusli_devices);
 
-    CHECK_NIXL_ERROR(agent->createBackend(benchmark_config.backend.name, backend_params, backend_engine),
-                     "createBackend failed!");
+    CHECK_NIXL_ERROR(
+        agent->createBackend(benchmark_config.backend.name, backend_params, backend_engine),
+        "createBackend failed!");
 }
 
 xferBenchNixlWorker::~xferBenchNixlWorker() {
@@ -293,7 +297,6 @@ xferBenchNixlWorker::initBasicDescDram(size_t page_size, size_t buffer_size, int
     // TODO: Does device id need to be set for DRAM?
     return std::optional<xferBenchIOV>(std::in_place, (uintptr_t)addr, buffer_size, mem_dev_id);
 }
-
 
 std::optional<xferBenchIOV>
 xferBenchNixlWorker::initBasicDescDram(size_t buffer_size, int mem_dev_id) {
@@ -388,7 +391,7 @@ getVramDescCudaVmm(int devid, size_t buffer_size, uint8_t memset_value) {
 }
 
 static void
-cleanupVramCuda(bool enable_vmm,xferBenchIOV &iov) {
+cleanupVramCuda(bool enable_vmm, xferBenchIOV &iov) {
     CHECK_CUDA_ERROR(cudaSetDevice(iov.devId), "Failed to set device");
     if (enable_vmm) {
         CHECK_CUDA_DRIVER_ERROR(cuMemUnmap(iov.addr, iov.len), "Failed to unmap memory");
@@ -594,7 +597,11 @@ createFileFds(const xferBenchConfig &config,
 }
 
 std::optional<xferBenchIOV>
-xferBenchNixlWorker::initBasicDescFile(std::string op_type,size_t page_size,size_t buffer_size, xferFileState &fstate, int mem_dev_id) {
+xferBenchNixlWorker::initBasicDescFile(std::string op_type,
+                                       size_t page_size,
+                                       size_t buffer_size,
+                                       xferFileState &fstate,
+                                       int mem_dev_id) {
     int fd = fstate.fd;
     uint64_t start_offset = fstate.offset;
     uint64_t end_offset = fstate.offset + buffer_size;
@@ -634,7 +641,9 @@ xferBenchNixlWorker::initBasicDescFile(std::string op_type,size_t page_size,size
 
     free(buf);
 
-    if (end_offset > fstate.file_size) fstate.file_size = end_offset;
+    if (end_offset > fstate.file_size) {
+        fstate.file_size = end_offset;
+    }
 
     return ret;
 }
@@ -695,7 +704,9 @@ xferBenchNixlWorker::cleanupBasicDescBlk(xferBenchIOV &iov) {
 bool
 xferBenchNixlWorker::ensureFileHasConsistencyData(const GusliDeviceConfig &device, size_t size) {
     int flags = O_RDWR | O_CREAT | O_LARGEFILE;
-    if (config.storage_enable_direct) flags |= O_DIRECT;
+    if (config.storage_enable_direct) {
+        flags |= O_DIRECT;
+    }
 
     int fd = open(device.device_path.c_str(), flags, 0744);
     if (fd < 0) {
@@ -787,7 +798,9 @@ xferBenchNixlWorker::allocateMemory(int num_threads,
         buffer_size = ((buffer_size + page_size - 1) / page_size) * page_size;
     }
 
-    bool canReadWriteFiles = std::find(backend.memory_types.begin(), backend.memory_types.end(), FILE_SEG) != backend.memory_types.end();
+    bool canReadWriteFiles =
+        std::find(backend.memory_types.begin(), backend.memory_types.end(), FILE_SEG) !=
+        backend.memory_types.end();
     if (canReadWriteFiles) {
         // int num_buffers = num_threads;
         int num_files = storage_config.num_files;
@@ -813,12 +826,18 @@ xferBenchNixlWorker::allocateMemory(int num_threads,
         for (int list_idx = 0; list_idx < num_threads; list_idx++) {
             std::vector<xferBenchIOV> iov_list;
             std::optional<xferBenchIOV> basic_desc;
-            basic_desc = initBasicDescFile(transfer_config.op_type, page_size, buffer_size, remote_file_descriptors[file_idx], 0);
+            basic_desc = initBasicDescFile(transfer_config.op_type,
+                                           page_size,
+                                           buffer_size,
+                                           remote_file_descriptors[file_idx],
+                                           0);
             if (basic_desc) {
                 iov_list.push_back(basic_desc.value());
             }
             file_idx += 1;
-            if (file_idx >= num_files) file_idx = 0;
+            if (file_idx >= num_files) {
+                file_idx = 0;
+            }
             nixl_reg_dlist_t desc_list(FILE_SEG);
             iovListToNixlRegDlist(iov_list, desc_list);
             CHECK_NIXL_ERROR(agent->registerMem(desc_list, &opt_args), "registerMem failed");
@@ -830,7 +849,8 @@ xferBenchNixlWorker::allocateMemory(int num_threads,
         std::vector<xferBenchIOV> iov_list;
         std::optional<xferBenchIOV> basic_desc;
 
-        nixl_mem_t seg_type = transfer_config.initiator_seg_type == XFERBENCH_SEG_TYPE_DRAM ? DRAM_SEG : VRAM_SEG;
+        nixl_mem_t seg_type =
+            transfer_config.initiator_seg_type == XFERBENCH_SEG_TYPE_DRAM ? DRAM_SEG : VRAM_SEG;
         switch (seg_type) {
         case DRAM_SEG: {
             // TODD, make the gusli exceptions here in a smart way
@@ -987,12 +1007,15 @@ xferBenchNixlWorker::allocateMemory(int num_threads) {
             std::vector<xferBenchIOV> iov_list;
             for (i = 0; i < num_devices; i++) {
                 std::optional<xferBenchIOV> basic_desc;
-                basic_desc = initBasicDescFile(config.op_type, config.page_size,buffer_size, remote_fds[file_idx], i);
+                basic_desc = initBasicDescFile(
+                    config.op_type, config.page_size, buffer_size, remote_fds[file_idx], i);
                 if (basic_desc) {
                     iov_list.push_back(basic_desc.value());
                 }
                 file_idx += 1;
-                if (file_idx >= num_files) file_idx = 0;
+                if (file_idx >= num_files) {
+                    file_idx = 0;
+                }
             }
             nixl_reg_dlist_t desc_list(FILE_SEG);
             iovListToNixlRegDlist(iov_list, desc_list);
@@ -1491,7 +1514,7 @@ xferBenchNixlWorker::transfer(size_t block_size,
     }
 
     if (skip > 0) {
-        ret = execTransfer(config, 
+        ret = execTransfer(config,
                            agent,
                            local_iovs,
                            remote_iovs,
@@ -1510,7 +1533,7 @@ xferBenchNixlWorker::transfer(size_t block_size,
 
     stats.clear();
 
-    ret = execTransfer(config, 
+    ret = execTransfer(config,
                        agent,
                        local_iovs,
                        remote_iovs,

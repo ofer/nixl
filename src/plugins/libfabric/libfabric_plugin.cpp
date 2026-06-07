@@ -30,12 +30,6 @@ getLibfabricBackendOptions() {
 }
 
 } // namespace
- 
-nixlBackendPluginCapabilities
-buildLibfabricCapabilities() {
-    return {false};
-}
-
 
 #ifdef STATIC_PLUGIN_LIBFABRIC
 nixlBackendPlugin *
@@ -44,8 +38,7 @@ createStaticLIBFABRICPlugin() {
                                       "LIBFABRIC",
                                       "0.1.0",
                                       getLibfabricBackendOptions(),
-                                      {DRAM_SEG, VRAM_SEG},
-                                      buildLibfabricCapabilities());
+                                      {DRAM_SEG, VRAM_SEG});
 }
 #else
 extern "C" NIXL_PLUGIN_EXPORT nixlBackendPlugin *
@@ -54,8 +47,7 @@ nixl_plugin_init() {
                                       "LIBFABRIC",
                                       "0.1.0",
                                       getLibfabricBackendOptions(),
-                                      {DRAM_SEG, VRAM_SEG},
-                                      buildLibfabricCapabilities());
+                                      {DRAM_SEG, VRAM_SEG});
 }
 
 extern "C" NIXL_PLUGIN_EXPORT void

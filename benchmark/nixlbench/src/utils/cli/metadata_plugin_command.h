@@ -13,7 +13,6 @@ namespace nixlbench {
 class metadataPluginCommand : public southboundPluginBenchmarkCommand {
 public:
     metadataPluginCommand(std::string backend_name,
-                          nixlBackendPluginCapabilities capabilities,
                           nixl_b_params_t option_specs,
                           nixl_mem_list_t supported_memory_types);
 
@@ -25,9 +24,6 @@ public:
 
     const std::vector<cliOption> &
     getOptions() const override;
-
-    const nixlBackendPluginCapabilities &
-    capabilities() const override;
 
     const metadataPluginOptionMap &
     metadataOptions() const override;
@@ -41,7 +37,6 @@ public:
 private:
     std::string name_;
     std::string description_;
-    nixlBackendPluginCapabilities capabilities_;
     nixl_b_params_t optionSpecs_;
     nixl_mem_list_t supportedMemoryTypes_;
     metadataPluginOptionMap optionValues_;

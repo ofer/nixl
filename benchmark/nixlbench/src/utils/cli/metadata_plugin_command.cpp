@@ -92,14 +92,11 @@ optionStringValue(const metadataPluginOptionValue &option) {
 } // namespace
 
 metadataPluginCommand::metadataPluginCommand(std::string backend_name,
-                                             nixlBackendPluginCapabilities capabilities,
                                              nixl_b_params_t option_specs,
                                              nixl_mem_list_t supportedMemoryTypes)
     : name_(std::move(backend_name)),
-      capabilities_(capabilities),
       optionSpecs_(std::move(option_specs)),
-      supportedMemoryTypes_(supportedMemoryTypes)
-{
+      supportedMemoryTypes_(supportedMemoryTypes) {
     bool canReadWriteFiles =
         std::find(supportedMemoryTypes.begin(), supportedMemoryTypes.end(), FILE_SEG) !=
         supportedMemoryTypes.end();
@@ -120,11 +117,6 @@ metadataPluginCommand::description() const {
 const std::vector<cliOption> &
 metadataPluginCommand::getOptions() const {
     return options_;
-}
-
-const nixlBackendPluginCapabilities &
-metadataPluginCommand::capabilities() const {
-    return capabilities_;
 }
 
 const metadataPluginOptionMap &

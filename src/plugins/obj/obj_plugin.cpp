@@ -49,32 +49,18 @@ getObjBackendOptions() {
 } // namespace
  
  static const nixl_mem_list_t supported_segments = {DRAM_SEG, OBJ_SEG};
- 
-nixlBackendPluginCapabilities
-buildObjCapabilities() {
-    return {false};
-}
-
 
 #ifdef STATIC_PLUGIN_OBJ
 nixlBackendPlugin *
 createStaticOBJPlugin() {
-    return obj_plugin_t::create(NIXL_PLUGIN_API_VERSION,
-                                "OBJ",
-                                "0.10.0",
-                                getObjBackendOptions(),
-                                supported_segments,
-                                buildObjCapabilities());
+    return obj_plugin_t::create(
+        NIXL_PLUGIN_API_VERSION, "OBJ", "0.10.0", getObjBackendOptions(), supported_segments);
 }
 #else
 extern "C" NIXL_PLUGIN_EXPORT nixlBackendPlugin *
 nixl_plugin_init() {
-    return obj_plugin_t::create(NIXL_PLUGIN_API_VERSION,
-                                "OBJ",
-                                "0.10.0",
-                                getObjBackendOptions(),
-                                supported_segments,
-                                buildObjCapabilities());
+    return obj_plugin_t::create(
+        NIXL_PLUGIN_API_VERSION, "OBJ", "0.10.0", getObjBackendOptions(), supported_segments);
 }
 
 extern "C" NIXL_PLUGIN_EXPORT void

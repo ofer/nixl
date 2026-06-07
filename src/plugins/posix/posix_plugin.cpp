@@ -35,21 +35,11 @@ getPosixBackendOptions() {
 
 } // namespace
 
-nixlBackendPluginCapabilities
-buildPosixCapabilities() {
-    return {false};
-}
- 
- 
 #ifdef STATIC_PLUGIN_POSIX
 nixlBackendPlugin *
 createStaticPOSIXPlugin() {
-    return posix_plugin_t::create(NIXL_PLUGIN_API_VERSION,
-                                  "POSIX",
-                                  "0.1.0",
-                                  getPosixBackendOptions(),
-                                  {DRAM_SEG, FILE_SEG},
-                                  buildPosixCapabilities());
+    return posix_plugin_t::create(
+        NIXL_PLUGIN_API_VERSION, "POSIX", "0.1.0", getPosixBackendOptions(), {DRAM_SEG, FILE_SEG});
 }
 #else
 extern "C" NIXL_PLUGIN_EXPORT nixlBackendPlugin *

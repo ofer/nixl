@@ -31,12 +31,6 @@ get_gusli_backend_options() {
     params["device_security"] = "";
     return params;
 }
- 
-nixlBackendPluginCapabilities
-buildGusliCapabilities() {
-    return { false};
-}
-
 
 #ifdef STATIC_PLUGIN_GUSLI
 nixlBackendPlugin *
@@ -45,8 +39,7 @@ createStaticGusliPlugin() {
                                   "GUSLI",
                                   "0.1.0",
                                   get_gusli_backend_options(),
-                                  {BLK_SEG, DRAM_SEG},
-                                  buildGusliCapabilities());
+                                  {BLK_SEG, DRAM_SEG});
 }
 #else
 extern "C" NIXL_PLUGIN_EXPORT nixlBackendPlugin *
@@ -55,8 +48,7 @@ nixl_plugin_init() {
                                   "GUSLI",
                                   "0.1.0",
                                   get_gusli_backend_options(),
-                                  {BLK_SEG, DRAM_SEG},
-                                  buildGusliCapabilities());
+                                  {BLK_SEG, DRAM_SEG});
 }
 
 extern "C" NIXL_PLUGIN_EXPORT void

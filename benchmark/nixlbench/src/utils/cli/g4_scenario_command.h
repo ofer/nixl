@@ -23,8 +23,7 @@ public:
     scenario_type_t
     scenarioType() const override;
     bool
-    supportsPlugin(nixl_mem_list_t supportedMemoryTypes,
-                   nixlBackendPluginCapabilities pluginCapabilities) const override;
+    supportsPlugin(nixl_mem_list_t supportedMemoryTypes) const override;
     request_key_value_pairs_t
     requestKeyValues() const override;
     int
