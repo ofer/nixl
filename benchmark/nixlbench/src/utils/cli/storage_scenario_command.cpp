@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "utils/cli/g3_scenario_command.h"
+#include "utils/cli/storage_scenario_command.h"
 
 #include "benchmark/benchmark_executor.h"
+#include "benchmark/benchmark_runtime_sync.h"
 #include "benchmark/nixl_storage_allocator.h"
-#include "benchmark/transfer_descriptor_strategy.h"
 #include "benchmark_config.h"
 #include "runtime/null_rt.h"
 #include "utils/scope_guard.h"
@@ -18,11 +18,8 @@
 
 #include <algorithm>
 #include <atomic>
-#include <charconv>
 #include <csignal>
-#include <cctype>
 #include <cstdlib>
-#include <exception>
 #include <iostream>
 #include <omp.h>
 #include <string>
@@ -34,10 +31,10 @@
 namespace nixlbench {
 namespace {
 
-    std::atomic<int> g3_terminate{0};
+    std::atomic<int> storage_terminate{0};
 
     void
-    g3SignalHandler(int signal) {
+    storageSignalHandler(int signal) {
         (void)signal;
         static const char msg[] = "Ctrl-C received, exiting...\n";
         constexpr int stdout_fd = 1;
@@ -45,14 +42,14 @@ namespace {
         auto size = write(stdout_fd, msg, sizeof(msg) - 1);
         (void)size;
 
-        if (++g3_terminate > max_count) {
+        if (++storage_terminate > max_count) {
             std::_Exit(EXIT_FAILURE);
         }
     }
 
     bool
-    g3Signaled() {
-        return g3_terminate.load() != 0;
+    storageSignaled() {
+        return storage_terminate.load() != 0;
     }
 
     nixl_status_t
@@ -62,10 +59,10 @@ namespace {
                           xferBenchStats &thread_stats) {
         nixl_status_t rc = agent.postXferReq(req);
         thread_stats.post_duration.add(timer.lap());
-        while (!g3Signaled() && NIXL_IN_PROG == rc) {
+        while (!storageSignaled() && NIXL_IN_PROG == rc) {
             rc = agent.getXferStatus(req);
         }
-        return g3Signaled() ? NIXL_ERR_UNKNOWN : rc;
+        return storageSignaled() ? NIXL_ERR_UNKNOWN : rc;
     }
 
     int
@@ -79,7 +76,7 @@ namespace {
                               xferBenchTimer &timer,
                               xferBenchStats &thread_stats) {
         if (num_iter <= 0) {
-            return 0;
+            return EXIT_SUCCESS;
         }
 
         nixlXferReqH *req = nullptr;
@@ -93,7 +90,7 @@ namespace {
         thread_stats.prepare_duration.add(timer.lap());
 
         for (int i = 0; i < num_iter; ++i) {
-            if (g3Signaled()) {
+            if (storageSignaled()) {
                 agent.releaseXferReq(req);
                 return EXIT_FAILURE;
             }
@@ -192,18 +189,20 @@ namespace {
         return ret.load();
     }
 
-    class g3NixlTransferStrategy : public benchmarkTransferStrategy {
+    class storageNixlTransferStrategy : public benchmarkTransferStrategy {
     public:
-        g3NixlTransferStrategy(nixlAgent &agent,
-                               const benchmarkConfig &config,
-                               remoteIovStrategy &remote_strategy)
+        storageNixlTransferStrategy(nixlAgent &agent,
+                                    const benchmarkConfig &config,
+                                    remoteIovStrategy &remote_strategy,
+                                    int transfers_per_execute)
             : agent_(agent),
               config_(config),
-              remote_strategy_(remote_strategy) {}
+              remote_strategy_(remote_strategy),
+              transfers_per_execute_(transfers_per_execute) {}
 
         std::variant<xferBenchStats, int>
         execute(const std::vector<std::vector<xferBenchIOV>> &local_descriptors) override {
-            if (g3Signaled()) {
+            if (storageSignaled()) {
                 return EXIT_FAILURE;
             }
 
@@ -215,24 +214,17 @@ namespace {
             auto remote_descriptors =
                 std::get<std::vector<std::vector<xferBenchIOV>>>(std::move(remote_result));
 
-            int num_iter = config_.common.num_iter / config_.transfer.num_threads;
-            int warmup_iter = config_.common.warmup_iter / config_.transfer.num_threads;
-            if (config_.transfer.start_block_size > LARGE_BLOCK_SIZE) {
-                num_iter /= config_.common.large_blk_iter_ftr;
-                warmup_iter /= config_.common.large_blk_iter_ftr;
-            }
-
             xferBenchStats stats;
             const nixl_xfer_op_t xfer_op =
                 config_.transfer.op_type == XFERBENCH_OP_READ ? NIXL_READ : NIXL_WRITE;
 
             int ret = executeTransfer(agent_,
                                       DRAM_SEG,
-                                      FILE_SEG,
+                                      remote_strategy_.segmentType(),
                                       local_descriptors,
                                       remote_descriptors,
                                       xfer_op,
-                                      num_iter,
+                                      transfers_per_execute_,
                                       config_.transfer.num_threads,
                                       stats);
 
@@ -240,7 +232,7 @@ namespace {
                 return ret;
             }
 
-            if (g3Signaled()) {
+            if (storageSignaled()) {
                 return EXIT_FAILURE;
             }
 
@@ -257,28 +249,47 @@ namespace {
         nixlAgent &agent_;
         benchmarkConfig config_;
         remoteIovStrategy &remote_strategy_;
+        int transfers_per_execute_;
     };
 
-    class g3StatsResultSink : public benchmarkResultSink {
+    class storageStatsResultSink : public benchmarkResultSink {
     public:
-        explicit g3StatsResultSink(benchmarkConfig config) : config_(std::move(config)) {}
+        explicit storageStatsResultSink(benchmarkConfig config) : config_(std::move(config)) {
+            stats_.clear();
+        }
 
         void
         record(const xferBenchStats &stats) override {
+            total_duration_us_ += stats.total_duration.avg();
+            stats_.add(stats);
+            ++record_count_;
+        }
+
+        void
+        print() {
+            if (record_count_ == 0) {
+                return;
+            }
+
+            stats_.total_duration.clear();
+            stats_.total_duration.add(total_duration_us_);
             xferBenchUtils::printStats(config_,
                                        false,
                                        config_.transfer.start_block_size,
                                        config_.transfer.start_batch_size,
-                                       stats);
+                                       stats_);
         }
 
     private:
         benchmarkConfig config_;
+        xferBenchStats stats_;
+        double total_duration_us_ = 0.0;
+        int record_count_ = 0;
     };
 
     benchmarkConfig
-    makeG3BenchmarkConfig(const g3ScenarioRequest &request,
-                          southboundPluginBenchmarkCommand &plugin) {
+    makeStorageBenchmarkConfig(const storageScenarioRequest &request,
+                               southboundPluginBenchmarkCommand &plugin) {
         const auto &metadata = plugin.metadataOptions();
         benchmarkConfig config;
         config.backend.name = std::string(plugin.name());
@@ -300,10 +311,26 @@ namespace {
         return config;
     }
 
+    int
+    effectiveTransferIterations(const benchmarkConfig &config) {
+        int num_iter = config.common.num_iter / config.transfer.num_threads;
+        if (config.transfer.start_block_size > LARGE_BLOCK_SIZE) {
+            num_iter /= config.common.large_blk_iter_ftr;
+        }
+        return std::max(num_iter, 0);
+    }
+
 } // namespace
 
-g3ScenarioCommand::g3ScenarioCommand()
-    : options_{
+storageScenarioCommand::storageScenarioCommand(std::string name,
+                                               std::string description,
+                                               scenario_type_t scenario_type,
+                                               benchmarkAllocationLifecycle allocation_lifecycle)
+    : name_(std::move(name)),
+      description_(std::move(description)),
+      scenario_type_(scenario_type),
+      allocation_lifecycle_(allocation_lifecycle),
+      options_{
           cliOption::option("file-size",
                             "File size, can be shorthand (5M, 10G ...)",
                             &request_.file_size,
@@ -331,44 +358,38 @@ g3ScenarioCommand::g3ScenarioCommand()
                             false)} {}
 
 std::string_view
-g3ScenarioCommand::name() const {
-    return "g3";
+storageScenarioCommand::name() const {
+    return name_;
 }
 
 std::string_view
-g3ScenarioCommand::description() const {
-    return "Run G3 storage scenario.  The G3 storage scenario reads or writes to a large  "
-           "file in batches.  The file is opened once and closed at the end of the "
-           "benchmark.  It only supports plugins that can read and write to files.";
+storageScenarioCommand::description() const {
+    return description_;
 }
 
 const std::vector<cliOption> &
-g3ScenarioCommand::getOptions() const {
+storageScenarioCommand::getOptions() const {
     return options_;
 }
 
 scenario_type_t
-g3ScenarioCommand::scenarioType() const {
-    return scenario_type_t::G3;
+storageScenarioCommand::scenarioType() const {
+    return scenario_type_;
 }
 
 bool
-g3ScenarioCommand::supportsPlugin(nixl_mem_list_t supportedMemoryTypes) const {
-    if (std::find(supportedMemoryTypes.begin(), supportedMemoryTypes.end(), FILE_SEG) ==
-        supportedMemoryTypes.end()) {
-        return false;
-    }
-    return true;
+storageScenarioCommand::supportsPlugin(nixl_mem_list_t supportedMemoryTypes) const {
+    return std::find(supportedMemoryTypes.begin(), supportedMemoryTypes.end(), FILE_SEG) !=
+        supportedMemoryTypes.end();
 }
 
 request_key_value_pairs_t
-g3ScenarioCommand::requestKeyValues() const {
+storageScenarioCommand::requestKeyValues() const {
     return request_.toKeyValuePairs();
 }
 
 bool
-g3ScenarioCommand::isRequestValid(const g3ScenarioRequest &request) const {
-    // validate file size
+storageScenarioCommand::isRequestValid(const storageScenarioRequest &request) const {
     const size_t file_size = parseFileSize(request.file_size);
     if (file_size == 0) {
         return false;
@@ -390,27 +411,26 @@ g3ScenarioCommand::isRequestValid(const g3ScenarioRequest &request) const {
 }
 
 int
-g3ScenarioCommand::run(southboundPluginBenchmarkCommand &plugin) {
-    // this should  never occur as the CLI should only present things that have the proper
-    // capabilities, but this is here just in case...
+storageScenarioCommand::run(southboundPluginBenchmarkCommand &plugin) {
     if (!supportsPlugin(plugin.supportedMemoryTypes())) {
-        std::cerr << "G3 requires a plugin that can read and write files" << std::endl;
-        return 1;
+        std::cerr << "Storage scenarios require a plugin that can read and write files"
+                  << std::endl;
+        return EXIT_FAILURE;
     }
 
     if (!isRequestValid(request_)) {
-        return 1;
+        return EXIT_FAILURE;
     }
 
-    g3_terminate.store(0);
-    auto previous_signal_handler = std::signal(SIGINT, g3SignalHandler);
+    storage_terminate.store(0);
+    auto previous_signal_handler = std::signal(SIGINT, storageSignalHandler);
     auto signal_guard = make_scope_guard(
         [previous_signal_handler] { std::signal(SIGINT, previous_signal_handler); });
 
-    benchmarkConfig benchmark_config = makeG3BenchmarkConfig(request_, plugin);
+    benchmarkConfig benchmark_config = makeStorageBenchmarkConfig(request_, plugin);
     xferBenchNullRT runtime;
     xferBenchUtils::setRT(&runtime);
-    std::cout << "Single instance backend - no synchronization needed" << std::endl;
+    std::cout << "Single instance storage backend - no synchronization needed" << std::endl;
 
     nixlAgentConfig agent_config;
     agent_config.syncMode = benchmark_config.transfer.num_threads > 1 ?
@@ -435,6 +455,11 @@ g3ScenarioCommand::run(southboundPluginBenchmarkCommand &plugin) {
         return EXIT_FAILURE;
     }
 
+    const int transfer_iterations = effectiveTransferIterations(benchmark_config);
+    const bool allocate_once = allocation_lifecycle_ == benchmarkAllocationLifecycle::AllocateOnce;
+    const int executor_iterations = allocate_once ? 1 : transfer_iterations;
+    const int transfers_per_execute = allocate_once ? transfer_iterations : 1;
+
     nullBenchmarkRuntimeSync sync;
     dramLocalIovStrategy local_iovs;
     fileRemoteIovStrategy remote_iovs(
@@ -449,24 +474,44 @@ g3ScenarioCommand::run(southboundPluginBenchmarkCommand &plugin) {
 
     auto descriptors =
         makeTransferDescriptorStrategy(benchmark_config, request_.randomized_read_location);
-    g3NixlTransferStrategy transfer(agent, benchmark_config, remote_iovs);
-    fixedIterationPolicy iterations(1, benchmarkAllocationLifecycle::AllocateOnce);
-    g3StatsResultSink results(benchmark_config);
+    storageNixlTransferStrategy transfer(
+        agent, benchmark_config, remote_iovs, transfers_per_execute);
+    fixedIterationPolicy iterations(executor_iterations, allocation_lifecycle_);
+    storageStatsResultSink results(benchmark_config);
 
     xferBenchUtils::printStatsHeader(benchmark_config);
     benchmarkRunComponents components{sync, allocator, *descriptors, transfer, iterations, results};
     benchmarkExecutor executor;
     int ret = executor.run(components);
-    if (g3Signaled()) {
+    if (storageSignaled()) {
         return EXIT_FAILURE;
+    }
+    if (ret == EXIT_SUCCESS) {
+        results.print();
     }
 
     return ret;
 }
 
-const g3ScenarioRequest &
-g3ScenarioCommand::request() const {
+const storageScenarioRequest &
+storageScenarioCommand::request() const {
     return request_;
 }
+
+allocateOnceScenarioCommand::allocateOnceScenarioCommand()
+    : storageScenarioCommand(
+          "allocate-once",
+          "Run allocate-once storage scenario. This simulates the G3 scenario by opening and "
+          "registering storage once, reusing it for all transfers, and closing it at the end.",
+          scenario_type_t::ALLOCATE_ONCE,
+          benchmarkAllocationLifecycle::AllocateOnce) {}
+
+allocatePerIterationScenarioCommand::allocatePerIterationScenarioCommand()
+    : storageScenarioCommand(
+          "allocate-per-iteration",
+          "Run allocate-per-iteration storage scenario. This simulates the G4 scenario by opening, "
+          "registering, transferring, deregistering, and closing storage each iteration.",
+          scenario_type_t::ALLOCATE_PER_ITERATION,
+          benchmarkAllocationLifecycle::AllocatePerIteration) {}
 
 } // namespace nixlbench

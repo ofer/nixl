@@ -157,8 +157,8 @@ benchmarkCliBuilder::parse(int argc, char **argv) {
     help_ = false;
 
     auto &registry = southboundPluginRegistry::instance();
-    g3Plugins_ = registry.createForAvailableMetadataPlugins();
-    g4Plugins_ = registry.createForAvailableMetadataPlugins();
+    allocateOncePlugins_ = registry.createForAvailableMetadataPlugins();
+    allocatePerIterationPlugins_ = registry.createForAvailableMetadataPlugins();
     rawPlugins_ = registry.createForAvailableMetadataPlugins();
 
     CLI::App app("NIXL Benchmark");
@@ -168,14 +168,14 @@ benchmarkCliBuilder::parse(int argc, char **argv) {
     auto *scenario_root = app.add_subcommand("scenario", "Run a benchmark scenario");
     scenario_root->require_subcommand(1);
     bindScenario(*scenario_root,
-                 g3_,
-                 g3Plugins_,
+                 allocateOnce_,
+                 allocateOncePlugins_,
                  selectedScenario_,
                  selectedPlugin_,
                  provided_options);
     bindScenario(*scenario_root,
-                 g4_,
-                 g4Plugins_,
+                 allocatePerIteration_,
+                 allocatePerIterationPlugins_,
                  selectedScenario_,
                  selectedPlugin_,
                  provided_options);

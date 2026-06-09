@@ -51,8 +51,8 @@ template<typename T> struct providedValue {
 enum class scenario_type_t {
     NONE,
     RAW,
-    G3,
-    G4,
+    ALLOCATE_ONCE,
+    ALLOCATE_PER_ITERATION,
 };
 
 struct metadataPluginOptionValue {
@@ -110,7 +110,7 @@ struct fileWorkloadRequest {
     providedValue<bool> enable_direct{false};
 };
 
-struct g3ScenarioRequest {
+struct storageScenarioRequest {
     std::string file_size = "1GB";
     int parallel_threads = 1;
     uint64_t block_size_bytes = 4096;
@@ -121,28 +121,6 @@ struct g3ScenarioRequest {
     request_key_value_pairs_t
     toKeyValuePairs() const {
         return {{"file_size", file_size},
-                {"parallel_threads", std::to_string(parallel_threads)},
-                {"block_size_bytes", std::to_string(block_size_bytes)},
-                {"batch_size", std::to_string(batch_size)},
-                {"action_mode", action_mode},
-                {"randomized_read_location", randomized_read_location ? "true" : "false"}};
-    }
-};
-
-struct g4ScenarioRequest {
-    std::string file_size = "5MB";
-    int num_files = 100;
-    uint64_t block_size_bytes = 0;
-    int parallel_threads = 1;
-    std::string action_mode = "read";
-    bool randomized_read_location = true;
-    uint64_t batch_size = 1;
-    std::string open_behavior = "open-close";
-
-    request_key_value_pairs_t
-    toKeyValuePairs() const {
-        return {{"file_size", file_size},
-                {"num_files", std::to_string(num_files)},
                 {"parallel_threads", std::to_string(parallel_threads)},
                 {"block_size_bytes", std::to_string(block_size_bytes)},
                 {"batch_size", std::to_string(batch_size)},

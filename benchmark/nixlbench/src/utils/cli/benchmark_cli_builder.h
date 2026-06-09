@@ -7,8 +7,7 @@
 #define NIXLBENCH_BENCHMARK_CLI_BUILDER_H
 
 #include "utils/cli/benchmark_command.h"
-#include "utils/cli/g3_scenario_command.h"
-#include "utils/cli/g4_scenario_command.h"
+#include "utils/cli/storage_scenario_command.h"
 #include "utils/cli/raw_command.h"
 
 #include <memory>
@@ -36,12 +35,12 @@ public:
     selectedPlugin() const;
 
 private:
-    g3ScenarioCommand g3_;
-    g4ScenarioCommand g4_;
+    allocateOnceScenarioCommand allocateOnce_;
+    allocatePerIterationScenarioCommand allocatePerIteration_;
     rawCommand raw_;
 
-    std::vector<std::unique_ptr<southboundPluginBenchmarkCommand>> g3Plugins_;
-    std::vector<std::unique_ptr<southboundPluginBenchmarkCommand>> g4Plugins_;
+    std::vector<std::unique_ptr<southboundPluginBenchmarkCommand>> allocateOncePlugins_;
+    std::vector<std::unique_ptr<southboundPluginBenchmarkCommand>> allocatePerIterationPlugins_;
     std::vector<std::unique_ptr<southboundPluginBenchmarkCommand>> rawPlugins_;
 
     benchmarkScenario *selectedScenario_ = nullptr;
