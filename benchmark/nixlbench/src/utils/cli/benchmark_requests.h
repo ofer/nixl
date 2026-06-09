@@ -115,6 +115,7 @@ struct storageScenarioRequest {
     int parallel_threads = 1;
     uint64_t block_size_bytes = 4096;
     uint64_t batch_size = 1;
+    uint64_t num_iter = 1000;
     std::string action_mode = "read";
     bool randomized_read_location = true;
 
@@ -124,6 +125,7 @@ struct storageScenarioRequest {
                 {"parallel_threads", std::to_string(parallel_threads)},
                 {"block_size_bytes", std::to_string(block_size_bytes)},
                 {"batch_size", std::to_string(batch_size)},
+                {"num_iter", std::to_string(num_iter)},
                 {"action_mode", action_mode},
                 {"randomized_read_location", randomized_read_location ? "true" : "false"}};
     }

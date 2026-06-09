@@ -156,6 +156,7 @@ namespace {
 #pragma omp parallel num_threads(num_threads)
         {
             xferBenchStats thread_stats;
+
             thread_stats.reserve(static_cast<size_t>(std::max(num_iter, 0)));
             xferBenchTimer timer;
             const int tid = omp_get_thread_num();
@@ -292,6 +293,7 @@ namespace {
                                southboundPluginBenchmarkCommand &plugin) {
         const auto &metadata = plugin.metadataOptions();
         benchmarkConfig config;
+        config.common.num_iter = request.num_iter;
         config.backend.name = std::string(plugin.name());
         config.backend.memory_types = plugin.supportedMemoryTypes();
         config.backend.options = metadata;
@@ -309,15 +311,6 @@ namespace {
         config.storage.num_files = metadata.intOption("num_files", 1);
         config.storage.enable_direct = metadata.boolOption("enable_direct");
         return config;
-    }
-
-    int
-    effectiveTransferIterations(const benchmarkConfig &config) {
-        int num_iter = config.common.num_iter / config.transfer.num_threads;
-        if (config.transfer.start_block_size > LARGE_BLOCK_SIZE) {
-            num_iter /= config.common.large_blk_iter_ftr;
-        }
-        return std::max(num_iter, 0);
     }
 
 } // namespace
@@ -347,6 +340,9 @@ storageScenarioCommand::storageScenarioCommand(std::string name,
                             "Batch size - number of data transfers to perform in each batch",
                             &request_.batch_size,
                             false),
+          cliOption::option("num_iter,num-iterations",
+                            "Number of times to run the execution loop",
+                            &request_.num_iter),
           cliOption::option(
               "action-mode",
               "Sets whether the benchmark will read, write, or interleave reading and writing",
@@ -407,6 +403,10 @@ storageScenarioCommand::isRequestValid(const storageScenarioRequest &request) co
         return false;
     }
 
+    if (request.num_iter <= 0) {
+        return false;
+    }
+
     return true;
 }
 
@@ -455,7 +455,7 @@ storageScenarioCommand::run(southboundPluginBenchmarkCommand &plugin) {
         return EXIT_FAILURE;
     }
 
-    const int transfer_iterations = effectiveTransferIterations(benchmark_config);
+    const int transfer_iterations = request_.num_iter;
     const bool allocate_once = allocation_lifecycle_ == benchmarkAllocationLifecycle::AllocateOnce;
     const int executor_iterations = allocate_once ? 1 : transfer_iterations;
     const int transfers_per_execute = allocate_once ? transfer_iterations : 1;
